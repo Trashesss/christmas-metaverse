@@ -20,6 +20,7 @@ const CHAT_GAP = 500;
 const NOTE_GAP = 3000;
 const GALLERY_GAP = 500;
 const EMOTE_GAP = 400;
+const LOOK_GAP = 1000;
 
 interface Player extends PlayerState {
   session: Session | null;
@@ -28,6 +29,7 @@ interface Player extends PlayerState {
   lastChat: number;
   lastNote: number;
   lastEmote: number;
+  lastLook: number;
   lastGallery: number;
 }
 interface Session extends SessionState {
@@ -55,6 +57,8 @@ export class World {
     const me = this.players.get(id);
     if (!me) return;
     switch (msg.t) {
+      case 'look':
+        return this.look(me, msg);
       case 'move':
         return this.move(me, msg);
       case 'chat':
@@ -146,8 +150,7 @@ export class World {
     const player: Player = {
       id,
       name: msg.name,
-      character: msg.character,
-      color: msg.color,
+      look: msg.look,
       ...spawnPoint(),
       ry: Math.PI,
       moving: false,
@@ -159,6 +162,7 @@ export class World {
       lastChat: 0,
       lastNote: 0,
       lastEmote: 0,
+      lastLook: 0,
       lastGallery: 0,
     };
     this.players.set(id, player);
@@ -169,6 +173,15 @@ export class World {
       exhibits: this.exhibits,
     });
     this.publish(player);
+  }
+
+  private look(me: Player, { look }: Msg<'look'>) {
+    if (me.session) return;
+    const now = this.now();
+    if (now - me.lastLook < LOOK_GAP) return this.notice(me.id, '조금만 천천히 갈아입어 주세요.');
+    me.lastLook = now;
+    me.look = look;
+    this.publish(me);
   }
 
   private move(me: Player, msg: Msg<'move'>) {
@@ -451,6 +464,6 @@ function onCake(pts: number[]) {
 
 /** 차단한 상대에게는 대기 중인 사실을 숨겨, 함께하기가 거절되며 차단이 드러나는 일을 막는다. */
 function viewFor(p: Player, viewer: string): PlayerState {
-  const { id, name, character, color, x, z, ry, moving, activity } = p;
-  return { id, name, character, color, x, z, ry, moving, activity, waiting: p.muted.has(viewer) ? null : p.waiting };
+  const { id, name, look, x, z, ry, moving, activity } = p;
+  return { id, name, look, x, z, ry, moving, activity, waiting: p.muted.has(viewer) ? null : p.waiting };
 }

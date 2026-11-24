@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_LOOKS } from '../shared/look';
 import { World } from '../server/world';
 import type { ServerMessage, Vec3 } from '../shared/protocol';
 import { MAX_EXHIBITS, PLAZA_RADIUS, STATIONS, COLLIDERS, resolveMove, workSpots } from '../shared/world';
@@ -11,7 +12,7 @@ function of<T extends ServerMessage['t']>(id: string, t: T) {
   return (inbox[id] ?? []).filter((m) => m.t === t) as Extract<ServerMessage, { t: T }>[];
 }
 const join = (id: string) =>
-  world.handle(id, { t: 'join', name: id, character: 'Mage', color: 0 });
+  world.handle(id, { t: 'join', name: id, look: DEFAULT_LOOKS.female });
 const at = (id: string, x: number, z: number) =>
   world.handle(id, { t: 'move', x, z, ry: 0, moving: false });
 const place = (id: string, item = 'strawberry', n: Vec3 = [0, 1, 0]) =>

@@ -1,16 +1,8 @@
 import { z } from 'zod';
 import { FONTS, MAX_CHUNK, MAX_TEXT, PAINT_COLORS, SIZES, TOOL_IDS, type Stroke } from './paint';
 import { COLORS, KINDS, type Kind } from './items';
+import { lookSchema, type Look } from './look';
 
-export const CHARACTERS = ['Barbarian', 'Knight', 'Mage', 'Rogue'] as const;
-export type Character = (typeof CHARACTERS)[number];
-// 로비에서 아바타 외형을 고르는 용도로만 쓴다. 서버로 보내거나 다른 사람에게 보이지 않는다.
-export const GENDERS = ['male', 'female'] as const;
-export type Gender = (typeof GENDERS)[number];
-export const CHARACTERS_BY_GENDER: Record<Gender, readonly Character[]> = {
-  male: ['Barbarian', 'Knight'],
-  female: ['Mage', 'Rogue'],
-};
 export const EMOTES = ['wave', 'cheer', 'jump', 'sit', 'laugh', 'snow'] as const;
 export type Emote = (typeof EMOTES)[number];
 
@@ -31,9 +23,9 @@ export const clientMessage = z.discriminatedUnion('t', [
   z.object({
     t: z.literal('join'),
     name: z.string().trim().min(1).max(12),
-    character: z.enum(CHARACTERS),
-    color,
+    look: lookSchema,
   }),
+  z.object({ t: z.literal('look'), look: lookSchema }),
   z.object({ t: z.literal('move'), x: num, z: num, ry: num, moving: z.boolean() }),
   z.object({ t: z.literal('chat'), text: z.string().trim().min(1).max(MAX_CHAT), session: id.nullable() }),
   z.object({ t: z.literal('whisper'), ref, to: id, text: z.string().trim().min(1).max(MAX_CHAT) }),
@@ -70,8 +62,7 @@ export type ClientMessage = z.infer<typeof clientMessage>;
 export interface PlayerState {
   id: string;
   name: string;
-  character: Character;
-  color: number;
+  look: Look;
   x: number;
   z: number;
   ry: number;

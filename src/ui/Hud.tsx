@@ -5,6 +5,7 @@ import { send } from '../net';
 import { dropInvite, useStore } from '../store';
 import { Chat } from './Chat';
 import { Gallery } from './Gallery';
+import { LookDialog } from './LookEditor';
 import { NotesPanel } from './Notes';
 import { People } from './People';
 import { StudioPanel } from './StudioPanel';
@@ -12,26 +13,40 @@ import { StudioPanel } from './StudioPanel';
 export function Hud() {
   const session = useStore((s) => s.session?.id ?? null);
   const gallery = useStore((s) => s.gallery);
+  const editing = useStore((s) => s.editing);
   const panel = useStore((s) => s.panel);
   const inSession = !!session;
   return (
     <div className={inSession ? 'hud studio' : 'hud'}>
-      {inSession ? <StudioPanel /> : <PlazaHud />}
+      {inSession ? <StudioPanel /> : <PlazaHud editing={editing} />}
       {gallery && <Gallery cakes={gallery} />}
-      {!gallery && panel && <NotesPanel />}
-      {!gallery && <Chat key={session ?? 'plaza'} session={session} placeholder={inSession ? '둘만 볼 수 있는 이야기' : '가까운 사람에게 이야기하기'} />}
+      {editing && <LookDialog />}
+      {!gallery && !editing && panel && <NotesPanel />}
+      {!gallery && !editing && <Chat key={session ?? 'plaza'} session={session} placeholder={inSession ? '둘만 볼 수 있는 이야기' : '가까운 사람에게 이야기하기'} />}
     </div>
   );
 }
 
-function PlazaHud() {
+function PlazaHud({ editing }: { editing: boolean }) {
   const near = useStore((s) => s.near);
   const invites = useStore((s) => s.invites);
   const players = useStore((s) => s.players);
   const myWait = useStore((s) => s.players[s.me]?.waiting);
   return (
     <>
-      <People />
+      <div className="plaza" inert={editing}>
+        <People />
+        <button className="dress" aria-haspopup="dialog" onClick={() => useStore.setState({ editing: true })}>👕 꾸미기</button>
+        {myWait ? (
+          <div className="card station">
+            <p>{KIND_EMOJI[myWait]} 같이 할 사람을 찾고 있어요. 둘러보셔도 괜찮아요.</p>
+            <button onClick={() => send({ t: 'wait', kind: null })}>그만 찾기</button>
+          </div>
+        ) : (
+          near && (near === 'gallery' ? <GalleryCard /> : <StationCard kind={near} />)
+        )}
+        <Joystick />
+      </div>
       <div className="invites">
         {invites.map((i) => (
           <div className="card" key={i.from}>
@@ -45,15 +60,6 @@ function PlazaHud() {
           </div>
         ))}
       </div>
-      {myWait ? (
-        <div className="card station">
-          <p>{KIND_EMOJI[myWait]} 같이 할 사람을 찾고 있어요. 둘러보셔도 괜찮아요.</p>
-          <button onClick={() => send({ t: 'wait', kind: null })}>그만 찾기</button>
-        </div>
-      ) : (
-        near && (near === 'gallery' ? <GalleryCard /> : <StationCard kind={near} />)
-      )}
-      <Joystick />
     </>
   );
 }

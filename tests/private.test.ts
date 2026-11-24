@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_LOOKS } from '../shared/look';
 import { World } from '../server/world';
 import { foldName, nameKey, parseWhisper } from '../shared/names';
 import { clientMessage, MAX_CHAT, MAX_NOTE, MAX_NOTES, type ServerMessage } from '../shared/protocol';
@@ -10,7 +11,7 @@ let world: World;
 function of<T extends ServerMessage['t']>(id: string, t: T) {
   return (inbox[id] ?? []).filter((m) => m.t === t) as Extract<ServerMessage, { t: T }>[];
 }
-const join = (id: string, name = id) => world.handle(id, { t: 'join', name, character: 'Mage', color: 0 });
+const join = (id: string, name = id) => world.handle(id, { t: 'join', name, look: DEFAULT_LOOKS.female });
 const whisper = (from: string, to: string, text = '비밀', ref = 1) => world.handle(from, { t: 'whisper', ref, to, text });
 const note = (from: string, to: string, text = '쪽지', ref = 1) => world.handle(from, { t: 'note', ref, to, text });
 const mute = (by: string, id: string, on = true) => world.handle(by, { t: 'mute', id, on });

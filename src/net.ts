@@ -1,5 +1,6 @@
 import { ITEMS } from '../shared/items';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
+import { loadLooks, sameLook, saveLooks, withLook } from './look';
 import { clearPending, settle } from './private';
 import { addChat, addEmote, addInvite, addWhisper, editSession, editStrokes, resetStore, toast, useStore, without } from './store';
 
@@ -47,10 +48,15 @@ function receive(msg: ServerMessage) {
         players: Object.fromEntries(msg.players.map((p) => [p.id, p])),
       });
     case 'player': {
-      const { player } = msg;
+      const { me, players } = get();
+      const prev = players[msg.player.id]?.look;
+      // 모습이 그대로면 얼굴을 다시 그리지 않도록 같은 객체를 쓴다.
+      const player = prev && sameLook(prev, msg.player.look) ? { ...msg.player, look: prev } : msg.player;
+      // 광장에서 바꾼 모습은 서버가 받아들인 뒤에 기억한다.
+      if (prev && player.look !== prev && player.id === me) saveLooks(withLook(loadLooks(), player.look));
       const known = positions.get(player.id);
       // 내 위치는 활동을 시작할 때만 서버 값을 따른다.
-      if (!known || player.id !== get().me || player.activity) positions.set(player.id, { ...player });
+      if (!known || player.id !== me || player.activity) positions.set(player.id, { ...player });
       return set((s) => ({ players: { ...s.players, [player.id]: player } }));
     }
     case 'gone':
@@ -74,10 +80,10 @@ function receive(msg: ServerMessage) {
     case 'chat':
       return addChat(msg.from, msg.text);
     case 'whisper': {
-      const { players, muted, panel, gallery } = get();
+      const { players, muted, panel, gallery, editing } = get();
       const from = players[msg.from];
       if (!from || muted[msg.from]) return;
-      if (panel || gallery) toast(`${from.name}님의 귓속말이 왔어요.`);
+      if (panel || gallery || editing) toast(`${from.name}님의 귓속말이 왔어요.`);
       return addWhisper(from, msg.text, false);
     }
     case 'note':
@@ -101,6 +107,7 @@ function receive(msg: ServerMessage) {
         invites: [],
         near: null,
         gallery: null,
+        editing: false,
         text: '',
       }));
     case 'sessionMeta': {
@@ -121,7 +128,7 @@ function receive(msg: ServerMessage) {
     case 'unstroke':
       return editStrokes((list) => list.filter((s) => s.id !== msg.id));
     case 'gallery':
-      return set((s) => (s.session ? s : { gallery: msg.cakes }));
+      return set((s) => (s.session || s.editing ? s : { gallery: msg.cakes }));
     case 'deco':
       return editSession((decos) => [...decos, msg.deco]);
     case 'undeco':
