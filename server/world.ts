@@ -13,7 +13,7 @@ import type {
   StoredNote,
   Vec3,
 } from '../shared/protocol';
-import { CHAT_RANGE, MAX_EXHIBITS, STATIONS, clampToPlaza } from '../shared/world';
+import { CHAT_RANGE, MAX_EXHIBITS, clampToPlaza, spawnPoint, workSpots } from '../shared/world';
 
 const INVITE_TTL = 20_000;
 const CHAT_GAP = 500;
@@ -42,7 +42,8 @@ export class World {
   private dirty = new Set<string>();
   private exhibits: Exhibit[] = [];
   private gallery: Exhibit[] = [];
-  private nextSlot = 0;
+  /** 종류마다 가장 오래된 자리부터 돌려 쓴다. */
+  private nextSlot: Record<Kind, number> = { cake: 0, tree: 0 };
 
   constructor(
     private send: (id: string, msg: ServerMessage) => void,
@@ -142,14 +143,12 @@ export class World {
     if ([...this.players.values()].some((p) => nameKey(p.name) === key)) {
       return this.send(id, { t: 'joinRejected', reason: 'taken' });
     }
-    const a = Math.random() * Math.PI;
     const player: Player = {
       id,
       name: msg.name,
       character: msg.character,
       color: msg.color,
-      x: Math.cos(a) * 3,
-      z: 6 + Math.sin(a) * 3,
+      ...spawnPoint(),
       ry: Math.PI,
       moving: false,
       activity: null,
@@ -294,9 +293,9 @@ export class World {
       ready: [],
       names: [a.name, b.name],
     };
-    const { x, z } = STATIONS[kind];
+    const spots = workSpots(kind);
     [a, b].forEach((p, i) => {
-      Object.assign(p, { x: x + (i ? 2.3 : -2.3), z, ry: i ? -Math.PI / 2 : Math.PI / 2 });
+      Object.assign(p, spots[i], { ry: i ? -Math.PI / 2 : Math.PI / 2 });
       Object.assign(p, { session, activity: kind, waiting: null, moving: false });
       this.publish(p);
     });
@@ -385,11 +384,11 @@ export class World {
   }
 
   private finish(s: Session) {
-    const slot = this.nextSlot;
-    this.nextSlot = (slot + 1) % MAX_EXHIBITS;
     const { id, kind, base, decos, strokes, names } = s;
+    const slot = this.nextSlot[kind];
+    this.nextSlot[kind] = (slot + 1) % MAX_EXHIBITS;
     const work: Exhibit = { id, slot, kind, base, decos, strokes, names };
-    this.exhibits = [...this.exhibits.filter((e) => e.slot !== slot), work];
+    this.exhibits = [...this.exhibits.filter((e) => e.kind !== kind || e.slot !== slot), work];
     if (kind === 'cake') this.gallery = [work, ...this.gallery].slice(0, MAX_GALLERY);
     for (const memberId of s.members) this.exit(this.players.get(memberId)!, true);
     this.broadcast({ t: 'exhibits', exhibits: this.exhibits });

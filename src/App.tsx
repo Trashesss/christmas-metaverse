@@ -30,7 +30,7 @@ export function App() {
         shadows="percentage"
         dpr={[1, 1.75]}
         frameloop={online ? 'always' : 'never'}
-        camera={{ position: [0, 3.4, 8], near: 0.2, far: 130 }}
+        camera={{ position: [0, 3.4, 8], near: 0.2, far: 200 }}
       >
         <FitView />
         <Suspense fallback={null}>{online && (session ? <Studio key={session.id} session={session} /> : <Plaza />)}</Suspense>

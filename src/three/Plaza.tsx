@@ -1,25 +1,21 @@
-import { Html, Stars, useGLTF } from '@react-three/drei';
+import { Html, Stars } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CAKE_TOP, COLORS, KIND_EMOJI, KIND_LABEL, KINDS, TREE_CONES, type Kind } from '../../shared/items';
-import { BENCHES, BUILDINGS, GALLERY, GALLERY_RANGE, EXHIBIT_SLOTS, STATIONS, STATION_RANGE, resolveMove } from '../../shared/world';
+import { COLLIDERS, EXHIBIT_SLOTS, GALLERY, RUN_SPEED, SPEED, STATIONS, facing, nearestSpot, resolveMove } from '../../shared/world';
 import { readMove, stopInput } from '../input';
 import { positions, send } from '../net';
 import { useStore } from '../store';
 import { Avatar } from './Avatar';
 import { Bulbs, Glow, Snow } from './Effects';
 import { itemGeometry } from './itemGeometry';
-import { Model, modelUrl } from './Model';
+import { Model } from './Model';
+import { Ground, Village } from './Village';
 import { FinishedWork, WorkBase } from './Work';
-
-[...new Set(BUILDINGS.map((b) => b.model)), 'table_round_A', 'post_lantern', 'bench'].forEach((m) => useGLTF.preload(modelUrl(m)));
-
-const SPEED = 5;
 
 export function Plaza() {
   const players = useStore((s) => s.players);
-  const exhibits = useStore((s) => s.exhibits);
   return (
     <>
       <Atmosphere />
@@ -30,36 +26,81 @@ export function Plaza() {
         <Station key={k} kind={k} />
       ))}
       <Showcase />
-      {EXHIBIT_SLOTS.map((slot, i) => {
-        const work = exhibits.find((e) => e.slot === i);
-        return (
-          <group key={i} position={[slot.x, 0, slot.z]} rotation-y={Math.atan2(-slot.x, -slot.z)}>
-            <mesh position-y={0.4} castShadow receiveShadow>
-              <cylinderGeometry args={[0.9, 1.05, 0.8, 10]} />
-              <meshStandardMaterial color="#c9d8ea" flatShading />
-            </mesh>
-            {work && (
-              <>
-                <group position-y={0.8} scale={0.5}>
-                  <FinishedWork kind={work.kind} base={work.base} decos={work.decos} strokes={work.strokes} />
-                </group>
-                <Glow position={[0, 1.6, -0.6]} size={2.6} />
-                <Html center position={[0, 0.4, 1.15]} zIndexRange={[5, 0]} className="tag" pointerEvents="none">
-                  <div className="plaque">
-                    {KIND_EMOJI[work.kind]} {work.names.join(' · ')}
-                  </div>
-                </Html>
-              </>
-            )}
-          </group>
-        );
-      })}
+      <Exhibits />
       {Object.values(players).map((p) => (
         <Avatar key={p.id} player={p} />
       ))}
       <Controller />
-      <Snow />
+      <Snow follow />
     </>
+  );
+}
+
+function Exhibits() {
+  const exhibits = useStore((s) => s.exhibits);
+  return KINDS.flatMap((kind) =>
+    EXHIBIT_SLOTS[kind].map((slot, i) => {
+      const work = exhibits.find((e) => e.kind === kind && e.slot === i);
+      return (
+        <group key={`${kind}${i}`} position={[slot.x, 0, slot.z]} rotation-y={slot.ry}>
+          <mesh position-y={0.4} castShadow receiveShadow>
+            <cylinderGeometry args={[0.9, 1.05, 0.8, 10]} />
+            <meshStandardMaterial color="#c9d8ea" flatShading />
+          </mesh>
+          {work && (
+            <>
+              <group position-y={0.8} scale={0.55}>
+                <FinishedWork kind={work.kind} base={work.base} decos={work.decos} strokes={work.strokes} resolution={256} />
+              </group>
+              <Glow position={[0, 1.6, -0.6]} size={2.6} />
+              <Html center position={slot.high ? [0, kind === 'tree' ? 3.4 : 2.1, 0] : [0, 0.4, 1.15]} zIndexRange={[5, 0]} className="tag" pointerEvents="none">
+                <div className="plaque">
+                  {KIND_EMOJI[work.kind]} {work.names.join(' · ')}
+                </div>
+              </Html>
+            </>
+          )}
+        </group>
+      );
+    }),
+  );
+}
+
+/** 그림자 범위가 플레이어를 따라다녀, 넓은 맵에서도 가까운 곳의 그림자가 또렷하다. */
+function Sun() {
+  const light = useRef<THREE.DirectionalLight>(null);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const l = light.current!;
+    scene.add(l.target);
+    return () => void scene.remove(l.target);
+  }, [scene]);
+  useFrame(() => {
+    const l = light.current;
+    const p = positions.get(useStore.getState().me);
+    if (!l || !p) return;
+    // 1m 단위로 옮겨 그림자 가장자리가 흔들리지 않게 한다.
+    const x = Math.round(p.x);
+    const z = Math.round(p.z);
+    l.target.position.set(x, 0, z);
+    l.position.set(x + 14, 22, z + 12);
+  });
+  return (
+    <directionalLight
+      ref={light}
+      position={[14, 22, 12]}
+      intensity={1.5}
+      color="#cfdcff"
+      castShadow
+      shadow-mapSize={[2048, 2048]}
+      shadow-camera-left={-26}
+      shadow-camera-right={26}
+      shadow-camera-top={26}
+      shadow-camera-bottom={-26}
+      shadow-camera-far={70}
+      shadow-bias={-0.0005}
+      shadow-normalBias={0.04}
+    />
   );
 }
 
@@ -67,128 +108,13 @@ function Atmosphere() {
   return (
     <>
       <color attach="background" args={['#1a2850']} />
-      <fog attach="fog" args={['#33477c', 24, 62]} />
-      <Stars radius={80} depth={20} count={900} factor={4} fade speed={0.5} />
+      <fog attach="fog" args={['#33477c', 32, 105]} />
+      <Stars radius={130} depth={30} count={900} factor={5} fade speed={0.5} />
       <hemisphereLight args={['#a9c4ff', '#4a4468', 1.5]} />
-      <directionalLight
-        position={[14, 22, 12]}
-        intensity={1.5}
-        color="#cfdcff"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-24}
-        shadow-camera-right={24}
-        shadow-camera-top={24}
-        shadow-camera-bottom={-24}
-        shadow-bias={-0.0005}
-        shadow-normalBias={0.04}
-      />
-      <pointLight position={[0, 4, 3.5]} color="#ffc46b" intensity={60} distance={16} />
-      <pointLight position={[STATIONS.cake.x, 3, STATIONS.cake.z + 1]} color="#ff9f6b" intensity={26} distance={9} />
-      <pointLight position={[STATIONS.tree.x, 3, STATIONS.tree.z + 1]} color="#ffcf7a" intensity={26} distance={9} />
-    </>
-  );
-}
-
-function Ground() {
-  return (
-    <>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <circleGeometry args={[70, 48]} />
-        <meshStandardMaterial color="#dfe9f8" roughness={1} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position-y={0.015} receiveShadow>
-        <ringGeometry args={[3.4, 6.4, 48]} />
-        <meshStandardMaterial color="#b8a89c" roughness={1} />
-      </mesh>
-      {KINDS.map((k) => (
-        <mesh key={k} rotation-x={-Math.PI / 2} position={[STATIONS[k].x, 0.012, STATIONS[k].z]} receiveShadow>
-          <circleGeometry args={[3, 32]} />
-          <meshStandardMaterial color="#b8a89c" roughness={1} />
-        </mesh>
-      ))}
-    </>
-  );
-}
-
-// 시드가 고정된 난수라 모두에게 같은 숲이 보인다.
-function scatter() {
-  let s = 7;
-  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  return Array.from({ length: 46 }, (_, i) => {
-    const a = (i / 46) * Math.PI * 2 + rnd() * 0.1;
-    const r = 25 + rnd() * 10;
-    return {
-      name: rnd() > 0.5 ? 'tree_single_A' : 'trees_A_medium',
-      position: [Math.cos(a) * r, 0, Math.sin(a) * r] as [number, number, number],
-      scale: 2.6 + rnd() * 1.8,
-      ry: rnd() * 6,
-    };
-  });
-}
-
-function Village() {
-  const trees = useMemo(scatter, []);
-  const lamps = useMemo(
-    () => [20, 70, 110, 160, 215, 250, 290, 325].map((d) => ({ x: Math.cos((d * Math.PI) / 180) * 16.5, z: Math.sin((d * Math.PI) / 180) * 16.5 })),
-    [],
-  );
-  const garland = useMemo(() => {
-    const out: THREE.Vector3[] = [];
-    lamps.forEach((a, i) => {
-      const b = lamps[(i + 1) % lamps.length];
-      for (let k = 0; k < 14; k++) {
-        const t = k / 14;
-        out.push(new THREE.Vector3(a.x + (b.x - a.x) * t, 3.3 - Math.sin(t * Math.PI) * 0.8, a.z + (b.z - a.z) * t));
-      }
-    });
-    return out;
-  }, [lamps]);
-  return (
-    <>
-      {BUILDINGS.map((b, i) => {
-        const x = Math.cos(b.angle) * b.r;
-        const z = Math.sin(b.angle) * b.r;
-        return <Model key={i} name={b.model} snow position={[x, 0, z]} rotation-y={Math.atan2(-x, -z)} scale={b.scale} />;
-      })}
-      {trees.map((t, i) => (
-        <Model key={i} name={t.name} snow position={t.position} rotation-y={t.ry} scale={t.scale} />
-      ))}
-      {Array.from({ length: 16 }, (_, i) => {
-        const a = (i / 16) * Math.PI * 2;
-        const h = 11 + ((i * 7) % 5) * 2;
-        return (
-          <mesh key={i} position={[Math.cos(a) * 52, h / 2 - 1, Math.sin(a) * 52]} rotation-y={i}>
-            <coneGeometry args={[12 + (i % 3) * 2, h, 6]} />
-            <meshStandardMaterial color="#c3d2ee" flatShading />
-          </mesh>
-        );
-      })}
-      {lamps.map((l, i) => (
-        <group key={i} position={[l.x, 0, l.z]} rotation-y={Math.atan2(-l.x, -l.z)}>
-          <Model name="post_lantern" />
-          <Glow position={[0, 2.4, 1]} />
-        </group>
-      ))}
-      <Bulbs points={garland} />
-      {BENCHES.map((b) => (
-        <Model key={`${b.x}:${b.z}`} name="bench" position={[b.x, 0, b.z]} rotation-y={Math.atan2(-b.x, -b.z)} />
-      ))}
-      {[12, 100, 190].map((d, i) => {
-        const a = (d * Math.PI) / 180;
-        return (
-          <mesh
-            key={d}
-            geometry={itemGeometry('snowman', i)}
-            position={[Math.cos(a) * 13.5, 0, Math.sin(a) * 13.5]}
-            rotation-y={Math.atan2(-Math.cos(a), -Math.sin(a))}
-            scale={2.8}
-            castShadow
-          >
-            <meshStandardMaterial vertexColors />
-          </mesh>
-        );
-      })}
+      <Sun />
+      <pointLight position={[0, 4, 3.5]} color="#ffc46b" intensity={60} distance={18} />
+      <pointLight position={[STATIONS.cake.x, 3, STATIONS.cake.z + 1]} color="#ff9f6b" intensity={26} distance={10} />
+      <pointLight position={[STATIONS.tree.x, 3, STATIONS.tree.z + 1]} color="#ffcf7a" intensity={26} distance={10} />
     </>
   );
 }
@@ -260,7 +186,7 @@ function Showcase() {
   const exhibits = useStore((s) => s.exhibits);
   const latest = useMemo(() => exhibits.filter((e) => e.kind === 'cake').slice(-3), [exhibits]);
   return (
-    <group position={[GALLERY.x, 0, GALLERY.z]} rotation-y={Math.atan2(-GALLERY.x, -GALLERY.z)}>
+    <group position={[GALLERY.x, 0, GALLERY.z]} rotation-y={facing(GALLERY)}>
       <Model name="building_market_yellow" snow position={[0, 0, -0.9]} scale={2.2} />
       <mesh position={[0, 0.45, 1]} castShadow receiveShadow>
         <boxGeometry args={[3.6, 0.9, 1]} />
@@ -280,7 +206,7 @@ function Showcase() {
         </group>
       ))}
       <pointLight position={[0, 2.4, 2]} color="#ffcf8a" intensity={14} distance={7} />
-      <Html center position={[0, 2.9, 0.8]} zIndexRange={[5, 0]} className="tag" pointerEvents="none">
+      <Html center position={[0, 3.5, 0.8]} zIndexRange={[5, 0]} className="tag" pointerEvents="none">
         <div className="sign">🍰 케이크 진열장</div>
       </Html>
     </group>
@@ -288,13 +214,19 @@ function Showcase() {
 }
 
 const TREE_HEIGHT = 7.6;
+/** 걸을 수 없는 경계 바깥의 숲으로 카메라가 나가지 않게 한다. */
+const CAMERA_RADIUS = 35;
+const MIN_CAMERA = 2.4;
 
-/** 카메라가 중앙 트리 속에 들어가지 않는 거리까지 당긴다. */
+/** 카메라가 중앙 트리나 건물, 나무 속에 들어가지 않는 거리까지 당긴다. */
 function clearDistance(t: THREE.Vector3, yaw: number, pitch: number, dist: number) {
   for (let d = 1; d < dist; d += 0.25) {
     const y = t.y + Math.sin(pitch) * d;
-    const r = Math.hypot(t.x + Math.sin(yaw) * Math.cos(pitch) * d, t.z + Math.cos(yaw) * Math.cos(pitch) * d);
-    if (r < 3.4 * (1 - y / TREE_HEIGHT)) return Math.max(1, d - 0.4);
+    const x = t.x + Math.sin(yaw) * Math.cos(pitch) * d;
+    const z = t.z + Math.cos(yaw) * Math.cos(pitch) * d;
+    const inTree = Math.hypot(x, z) < 3.4 * (1 - y / TREE_HEIGHT);
+    const inside = COLLIDERS.some((c) => c.h !== undefined && y < c.h + 0.3 && Math.hypot(x - c.x, z - c.z) < c.r + 0.5);
+    if (inTree || inside || Math.hypot(x, z) > CAMERA_RADIUS) return Math.max(1, d - 0.4);
   }
   return dist;
 }
@@ -304,6 +236,7 @@ function Controller() {
   const view = useRef({ yaw: 0, pitch: 0.42, dist: 9.5 });
   const sent = useRef({ at: 0, x: 0, z: 0, ry: 0, moving: false });
   const target = useRef<THREE.Vector3 | null>(null);
+  const shown = useRef(9.5);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -354,13 +287,14 @@ function Controller() {
     if (!p) return;
     const dt = Math.min(rawDt, 0.1);
     const { yaw, pitch, dist } = view.current;
-    const input = gallery ? { x: 0, y: 0 } : readMove();
+    const input = gallery ? { x: 0, y: 0, run: false } : readMove();
     const speed = Math.hypot(input.x, input.y);
     p.moving = speed > 0.15;
     if (p.moving) {
       const dx = input.x * Math.cos(yaw) - input.y * Math.sin(yaw);
       const dz = -input.x * Math.sin(yaw) - input.y * Math.cos(yaw);
-      Object.assign(p, resolveMove(p.x + dx * SPEED * dt, p.z + dz * SPEED * dt));
+      const pace = input.run ? RUN_SPEED : SPEED;
+      Object.assign(p, resolveMove(p.x + dx * pace * dt, p.z + dz * pace * dt));
       p.ry = Math.atan2(dx, dz);
     }
 
@@ -372,18 +306,22 @@ function Controller() {
       send({ t: 'move', x: p.x, z: p.z, ry: p.ry, moving: p.moving });
     }
 
-    const within = (s: { x: number; z: number }, range = STATION_RANGE) => Math.hypot(p.x - s.x, p.z - s.z) < range;
-    const found = KINDS.find((k) => within(STATIONS[k])) ?? (within(GALLERY, GALLERY_RANGE) ? 'gallery' : null);
+    const found = nearestSpot(p.x, p.z, near);
     if (found !== near) useStore.setState({ near: found });
 
     const t = (target.current ??= new THREE.Vector3(p.x, 1.3, p.z));
     t.x = THREE.MathUtils.damp(t.x, p.x, 10, dt);
     t.z = THREE.MathUtils.damp(t.z, p.z, 10, dt);
-    const d = clearDistance(t, yaw, pitch, dist);
+    // 막히면 빠르게 당기고, 트이면 천천히 물러나 화면이 튀지 않게 한다.
+    const want = Math.max(MIN_CAMERA, clearDistance(t, yaw, pitch, dist));
+    shown.current = THREE.MathUtils.damp(shown.current, want, want < shown.current ? 18 : 4, dt);
+    const d = shown.current;
+    // 벽에 가까워질수록 어깨 너머로 조금 더 내려다본다.
+    const tilt = pitch + Math.max(0, MIN_CAMERA + 1 - d) * 0.15;
     camera.position.set(
-      t.x + Math.sin(yaw) * Math.cos(pitch) * d,
-      t.y + Math.sin(pitch) * d,
-      t.z + Math.cos(yaw) * Math.cos(pitch) * d,
+      t.x + Math.sin(yaw) * Math.cos(tilt) * d,
+      t.y + Math.sin(tilt) * d,
+      t.z + Math.cos(yaw) * Math.cos(tilt) * d,
     );
     camera.lookAt(t);
   });

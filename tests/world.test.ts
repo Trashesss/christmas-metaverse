@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { World } from '../server/world';
 import type { ServerMessage, Vec3 } from '../shared/protocol';
-import { MAX_EXHIBITS, PLAZA_RADIUS, STATIONS, COLLIDERS, resolveMove } from '../shared/world';
+import { MAX_EXHIBITS, PLAZA_RADIUS, STATIONS, COLLIDERS, resolveMove, workSpots } from '../shared/world';
 
 let now = 0;
 let inbox: Record<string, ServerMessage[]>;
@@ -233,14 +233,47 @@ describe('decorating', () => {
     expect(of('c', 'exhibits')).toHaveLength(1);
   });
 
-  it('recycles exhibit slots', () => {
+  it('recycles exhibit slots per kind', () => {
     for (let i = 0; i <= MAX_EXHIBITS; i++) {
       place('a');
       world.handle('a', { t: 'ready', on: true });
       world.handle('b', { t: 'ready', on: true });
       pair('a', 'b');
     }
-    expect(of('c', 'exhibits').at(-1)!.exhibits).toHaveLength(MAX_EXHIBITS);
+    const shown = of('c', 'exhibits').at(-1)!.exhibits;
+    expect(shown).toHaveLength(MAX_EXHIBITS);
+    // 일곱 번째가 첫 자리를 덮어쓰고 가장 오래된 것이 사라진다.
+    expect(shown.map((e) => e.slot).sort()).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(shown.find((e) => e.slot === 0)!.id).not.toBe(of('c', 'exhibits')[0].exhibits[0].id);
+  });
+
+  it('cakes and trees keep separate slots', () => {
+    const finish = (kind: 'cake' | 'tree') => {
+      pair('a', 'b', kind);
+      place('a', kind === 'tree' ? 'star' : 'strawberry');
+      world.handle('a', { t: 'ready', on: true });
+      world.handle('b', { t: 'ready', on: true });
+    };
+    world.handle('a', { t: 'leaveSession' });
+    world.handle('b', { t: 'leaveSession' });
+    for (const kind of ['cake', 'cake', 'tree', 'cake', 'tree'] as const) finish(kind);
+    const shown = of('c', 'exhibits').at(-1)!.exhibits;
+    expect(shown.filter((e) => e.kind === 'cake').map((e) => e.slot)).toEqual([0, 1, 2]);
+    expect(shown.filter((e) => e.kind === 'tree').map((e) => e.slot)).toEqual([0, 1]);
+    for (let i = 0; i < MAX_EXHIBITS; i++) finish('tree');
+    const full = of('c', 'exhibits').at(-1)!.exhibits;
+    expect(full.filter((e) => e.kind === 'tree')).toHaveLength(MAX_EXHIBITS);
+    expect(full.filter((e) => e.kind === 'cake')).toHaveLength(3);
+  });
+
+  it('places the pair at the station spots', () => {
+    world.handle('a', { t: 'leaveSession' });
+    world.handle('b', { t: 'leaveSession' });
+    pair('a', 'b', 'tree');
+    const [first, second] = workSpots('tree');
+    const seen = (id: string) => of('c', 'player').filter((m) => m.player.id === id).at(-1)!.player;
+    expect(seen('a')).toMatchObject(first);
+    expect(seen('b')).toMatchObject(second);
   });
 
   it('a tree gets exactly one topper', () => {
