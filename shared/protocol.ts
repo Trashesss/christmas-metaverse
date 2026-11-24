@@ -99,6 +99,7 @@ export interface SessionState {
 }
 export interface Exhibit {
   id: string;
+  /** 같은 종류 안에서의 전시대 번호 */
   slot: number;
   kind: Kind;
   base: number;

@@ -15,7 +15,8 @@ function dotTexture() {
 }
 const dot = dotTexture();
 
-export function Snow({ count = 700, area = 44, height = 16 }) {
+/** follow를 주면 카메라가 보는 쪽 area 안에서만 내려 넓은 맵에서도 눈 수가 늘지 않는다. */
+export function Snow({ count = 700, area = 44, height = 16, follow = false }) {
   const ref = useRef<THREE.Points>(null);
   const data = useMemo(() => {
     const a = new Float32Array(count * 3);
@@ -24,16 +25,26 @@ export function Snow({ count = 700, area = 44, height = 16 }) {
     }
     return a;
   }, [count, area, height]);
-  useFrame(({ clock }, dt) => {
+  useFrame(({ clock, camera }, dt) => {
     const attr = ref.current?.geometry.attributes.position;
     if (!attr) return;
     const a = attr.array as Float32Array;
     const t = clock.elapsedTime;
     const step = Math.min(dt, 0.1);
+    // 카메라 앞쪽 10m를 중심으로 삼아 보이는 곳에 눈이 몰리게 한다.
+    const forward = camera.getWorldDirection(new THREE.Vector3());
+    const cx = camera.position.x + forward.x * 10;
+    const cz = camera.position.z + forward.z * 10;
+    const half = area / 2;
     for (let i = 0; i < count; i++) {
       a[i * 3] += Math.sin(t + i) * step * 0.3;
       a[i * 3 + 1] -= step * (0.8 + (i % 5) * 0.15);
       if (a[i * 3 + 1] < 0) a[i * 3 + 1] = height;
+      if (follow) {
+        // 중심에서 멀어진 눈은 반대편으로 되돌려 영역 안에 머물게 한다.
+        a[i * 3] = cx + THREE.MathUtils.euclideanModulo(a[i * 3] - cx + half, area) - half;
+        a[i * 3 + 2] = cz + THREE.MathUtils.euclideanModulo(a[i * 3 + 2] - cz + half, area) - half;
+      }
     }
     attr.needsUpdate = true;
   });
@@ -52,6 +63,19 @@ export function Glow({ position, color = '#ffb75e', size = 2, onTop = false }: {
     <sprite position={position} scale={size} raycast={() => null}>
       <spriteMaterial map={dot} color={color} transparent opacity={0.4} depthWrite={false} depthTest={!onTop} fog={false} blending={THREE.AdditiveBlending} />
     </sprite>
+  );
+}
+
+/** 여러 군데의 빛무리를 한 번에 그린다. */
+export function Glows({ points, size = 2, color = '#ffb75e' }: { points: THREE.Vector3[]; size?: number; color?: string }) {
+  const positions = useMemo(() => new Float32Array(points.flatMap((p) => p.toArray())), [points]);
+  return (
+    <points frustumCulled={false} raycast={() => null}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <pointsMaterial map={dot} size={size} color={color} transparent opacity={0.4} depthWrite={false} fog={false} blending={THREE.AdditiveBlending} />
+    </points>
   );
 }
 

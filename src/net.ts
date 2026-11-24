@@ -128,10 +128,12 @@ function receive(msg: ServerMessage) {
       return editSession((decos) => decos.filter((d) => d.id !== msg.id));
     case 'cursor':
       return set({ partnerCursor: msg.p });
-    case 'sessionEnd':
+    case 'sessionEnd': {
+      const kind = get().session?.kind;
       set((s) => ({ session: null, partnerCursor: null, chat: s.chat.filter((l) => l.whisper) }));
-      if (msg.finished) toast('완성했어요! 광장 북쪽에 전시되었어요.');
+      if (msg.finished) toast(`완성했어요! ${kind === 'tree' ? '트리 꾸미는 자리 옆' : '케이크 진열장 옆'}에 전시되었어요.`);
       return;
+    }
     case 'exhibits':
       return set({ exhibits: msg.exhibits });
     case 'notice':

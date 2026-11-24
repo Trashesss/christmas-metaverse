@@ -23,9 +23,14 @@ addEventListener('focusin', () => {
 const axis = (neg: string[], pos: string[]) =>
   Number(pos.some((k) => keys.has(k))) - Number(neg.some((k) => keys.has(k)));
 
+/** 조이스틱을 끝까지 밀거나 Shift를 누르면 달린다. */
+const RUN_STICK = 0.92;
+const shift = () => keys.has('ShiftLeft') || keys.has('ShiftRight');
+
 export function readMove() {
   const x = axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']) + stick.x;
   const y = axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']) + stick.y;
   const len = Math.hypot(x, y);
-  return len > 1 ? { x: x / len, y: y / len } : { x, y };
+  const run = shift() || Math.hypot(stick.x, stick.y) > RUN_STICK;
+  return len > 1 ? { x: x / len, y: y / len, run } : { x, y, run };
 }
