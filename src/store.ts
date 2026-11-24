@@ -1,13 +1,22 @@
 import { create } from 'zustand';
 import type { Kind } from '../shared/items';
 import type { Stroke, ToolId } from '../shared/paint';
-import type { Deco, Emote, Exhibit, PlayerState, SessionState, Vec3 } from '../shared/protocol';
+import type { Deco, Emote, Exhibit, PlayerState, SessionState, StoredNote, Vec3 } from '../shared/protocol';
 
 export interface ChatLine {
   key: number;
   name: string;
   text: string;
   mine: boolean;
+  /** 귓속말이면 상대방. 답장은 닉네임이 아니라 이 id로 보낸다. */
+  whisper?: Peer;
+}
+export interface Peer {
+  id: string;
+  name: string;
+}
+export interface Note extends StoredNote {
+  read: boolean;
 }
 export interface Invite {
   from: string;
@@ -17,12 +26,21 @@ export type Spot = Kind | 'gallery';
 export type StudioTab = 'paint' | 'topping' | 'base';
 interface State {
   status: 'lobby' | 'connecting' | 'online';
+  joinError: 'taken' | 'invalid' | null;
   me: string;
   players: Record<string, PlayerState>;
   bubbles: Record<string, { key: number; text: string }>;
   emotes: Record<string, { key: number; emote: Emote }>;
   muted: Record<string, true>;
   chat: ChatLine[];
+  whisper: Peer | null;
+  whisperDrafts: Record<string, string>;
+  panel: 'inbox' | 'people' | null;
+  notes: Note[];
+  noteTo: Peer | null;
+  noteDrafts: Record<string, string>;
+  noteSending: boolean;
+  noteError: string;
   toasts: { key: number; text: string }[];
   invites: Invite[];
   exhibits: Exhibit[];
@@ -44,12 +62,21 @@ interface State {
 
 const initial: State = {
   status: 'lobby',
+  joinError: null,
   me: '',
   players: {},
   bubbles: {},
   emotes: {},
   muted: {},
   chat: [],
+  whisper: null,
+  whisperDrafts: {},
+  panel: null,
+  notes: [],
+  noteTo: null,
+  noteDrafts: {},
+  noteSending: false,
+  noteError: '',
   toasts: [],
   invites: [],
   exhibits: [],
@@ -91,6 +118,12 @@ export function addChat(from: string, text: string) {
     bubbles: { ...s.bubbles, [from]: { key, text } },
   }));
   setTimeout(() => set((s) => ({ bubbles: dropIf(s.bubbles, from, key) })), 6000);
+}
+
+/** 귓속말은 말풍선을 띄우지 않는다. */
+export function addWhisper(peer: Peer, text: string, mine: boolean) {
+  const key = ++seq;
+  set((s) => ({ chat: [...s.chat, { key, name: peer.name, text, mine, whisper: { id: peer.id, name: peer.name } }].slice(-50) }));
 }
 
 export function addEmote(from: string, emote: Emote) {
