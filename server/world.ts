@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_GALLERY, MAX_POINTS, MAX_STROKES, MAX_STROKE_POINTS, type Stroke } from '../shared/paint';
 import { BASES, MAX_DECOS, TREE_TOP, findItem, type Kind } from '../shared/items';
+import { nameKey } from '../shared/names';
+import { MAX_NOTES } from '../shared/protocol';
 import type {
   ClientMessage,
   Deco,
@@ -8,19 +10,23 @@ import type {
   PlayerState,
   ServerMessage,
   SessionState,
+  StoredNote,
   Vec3,
 } from '../shared/protocol';
 import { CHAT_RANGE, MAX_EXHIBITS, STATIONS, clampToPlaza } from '../shared/world';
 
 const INVITE_TTL = 20_000;
 const CHAT_GAP = 500;
+const NOTE_GAP = 3000;
 const GALLERY_GAP = 500;
 const EMOTE_GAP = 400;
 
 interface Player extends PlayerState {
   session: Session | null;
   muted: Set<string>;
+  notes: StoredNote[];
   lastChat: number;
+  lastNote: number;
   lastEmote: number;
   lastGallery: number;
 }
@@ -52,6 +58,14 @@ export class World {
         return this.move(me, msg);
       case 'chat':
         return this.chat(me, msg);
+      case 'whisper':
+        return this.whisper(me, msg);
+      case 'note':
+        return this.note(me, msg);
+      case 'deleteNote':
+        if (!me.notes.some((n) => n.id === msg.id)) return;
+        me.notes = me.notes.filter((n) => n.id !== msg.id);
+        return this.send(me.id, { t: 'noteDeleted', id: msg.id });
       case 'emote':
         return this.emote(me, msg);
       case 'wait':
@@ -103,7 +117,10 @@ export class World {
     this.players.delete(id);
     this.dirty.delete(id);
     for (const key of this.invites.keys()) if (key.split('>').includes(id)) this.invites.delete(key);
-    for (const p of this.players.values()) p.muted.delete(id);
+    for (const p of this.players.values()) {
+      // 차단이 풀리며 숨겨둔 쪽지가 다시 보이지 않게 함께 지운다.
+      if (p.muted.delete(id)) p.notes = p.notes.filter((n) => n.from !== id);
+    }
     this.broadcast({ t: 'gone', id });
   }
 
@@ -120,6 +137,11 @@ export class World {
 
   private join(id: string, msg: Msg<'join'>) {
     if (this.players.has(id)) return;
+    const key = nameKey(msg.name);
+    if (!key) return this.send(id, { t: 'joinRejected', reason: 'invalid' });
+    if ([...this.players.values()].some((p) => nameKey(p.name) === key)) {
+      return this.send(id, { t: 'joinRejected', reason: 'taken' });
+    }
     const a = Math.random() * Math.PI;
     const player: Player = {
       id,
@@ -134,7 +156,9 @@ export class World {
       waiting: null,
       session: null,
       muted: new Set(),
+      notes: [],
       lastChat: 0,
+      lastNote: 0,
       lastEmote: 0,
       lastGallery: 0,
     };
@@ -161,6 +185,38 @@ export class World {
     if (now - me.lastChat < CHAT_GAP) return this.notice(me.id, '조금만 천천히 이야기해 주세요.');
     me.lastChat = now;
     for (const id of this.audience(me)) this.send(id, { t: 'chat', from: me.id, text });
+  }
+
+  private whisper(me: Player, msg: Msg<'whisper'>) {
+    const to = this.recipient(me, msg.to);
+    const now = this.now();
+    const result = !to ? 'gone' : now - me.lastChat < CHAT_GAP ? 'slow' : 'ok';
+    // 차단 여부가 드러나지 않게 전달 여부와 상관없이 같은 답을 보낸다.
+    this.send(me.id, { t: 'sent', ref: msg.ref, result });
+    if (!to || result !== 'ok') return;
+    me.lastChat = now;
+    if (!to.muted.has(me.id)) this.send(to.id, { t: 'whisper', from: me.id, text: msg.text });
+  }
+
+  private note(me: Player, msg: Msg<'note'>) {
+    const to = this.recipient(me, msg.to);
+    const now = this.now();
+    const result = !to ? 'gone' : now - me.lastNote < NOTE_GAP ? 'slow' : 'ok';
+    // 가득 참을 알리면 차단된 사람만 성공을 보게 되므로, 가득 차도 같은 답을 보낸다.
+    this.send(me.id, { t: 'sent', ref: msg.ref, result });
+    if (!to || result !== 'ok') return;
+    me.lastNote = now;
+    // 차단해서 숨긴 쪽지는 본인이 지울 수 없으니 자리를 차지하지 않는다.
+    const full = to.notes.filter((n) => !to.muted.has(n.from)).length >= MAX_NOTES;
+    if (to.muted.has(me.id) || full) return;
+    const note: StoredNote = { id: randomUUID(), from: me.id, name: me.name, text: msg.text, at: now };
+    to.notes.push(note);
+    this.send(to.id, { t: 'note', note });
+  }
+
+  /** 닉네임은 다시 쓰일 수 있어 접속마다 새로 만든 id로만 찾는다. */
+  private recipient(me: Player, id: string) {
+    return id === me.id ? undefined : this.players.get(id);
   }
 
   private emote(me: Player, msg: Msg<'emote'>) {

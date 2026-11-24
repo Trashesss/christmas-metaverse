@@ -69,6 +69,47 @@ legend { font-size: 14px; padding: 0 0 6px; }
 .joystick { display: none; position: absolute; left: 22px; bottom: 92px; width: 116px; height: 116px; border-radius: 50%; background: #ffffff2e; border: 2px solid #ffffff66; touch-action: none; }
 .joystick i { position: absolute; left: 33px; top: 33px; width: 46px; height: 46px; border-radius: 50%; background: #ffffffd9; }
 
+.people .row span, .notes .person > span { overflow-wrap: anywhere; }
+.person { flex-wrap: wrap; }
+.acts { display: flex; gap: 6px; margin-left: auto; }
+.acts button { min-height: 36px; padding: 4px 10px; font-size: 13px; }
+.error { color: #a81f28; font-size: 14px; }
+.lobby .error { margin-top: -8px; }
+input[aria-invalid='true'] { border-color: var(--red); }
+
+.chat .log .whisper { background: #4a2a6bee; border: 1px dashed #d9b8ff; }
+.chat .log .whisper b, .chat .log .whisper.mine b { color: #e9d2ff; }
+.chat .log .whisper button { pointer-events: auto; min-height: 32px; padding: 2px 12px; margin-left: 4px; font-size: 13px; }
+.whisper-bar { pointer-events: auto; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 4px 2px 12px; border-radius: 12px; background: #4a2a6b; color: #fff; font-size: 14px; line-height: 1.25; }
+.whisper-bar span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.whisper-bar button { flex: none; min-height: 32px; padding: 2px 10px; font-size: 13px; }
+.whisper-bar.blocked { background: #8f2530; }
+.chat form.whispering input { border-color: #7a4bb0; background: #f6efff; }
+.notes-button { position: relative; }
+.badge { position: absolute; top: -6px; right: -4px; min-width: 20px; padding: 0 5px; border-radius: 10px; background: var(--red); color: #fff; font: 600 12px/20px system-ui, sans-serif; }
+.notes { position: absolute; left: 12px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 54px); width: min(340px, calc(100vw - 24px)); max-height: min(480px, calc(100dvh - 130px)); overflow: auto; z-index: 2; outline: none; }
+.notes header { margin-bottom: 10px; }
+.notes header > button { flex: none; }
+.notes h2 { flex: 1; margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.notes .tabs { flex: 1; margin: 0; }
+.notes .tabs button, .notes header > button { min-height: 40px; padding: 4px 12px; }
+.notes .person { margin-top: 6px; }
+.notes ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.notes li { border: 1.5px solid var(--line); border-radius: 12px; background: #fff; padding: 4px; }
+.notes li.unread { border-color: var(--red); }
+.notes .head { width: 100%; border: 0; padding: 6px 8px; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left; overflow-wrap: anywhere; background: none; }
+.notes .head i { color: #a81f28; font-style: normal; font-size: 13px; }
+.notes time, .notes .help { color: #5d6073; font-size: 13px; }
+.notes .peek { grid-column: 1 / -1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 14px system-ui, sans-serif; }
+.notes .body { padding: 2px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notes form { display: grid; gap: 8px; }
+.notes form p { margin: 0; }
+.notes p:not(.body) { word-break: keep-all; }
+textarea { font: inherit; font-size: 16px; width: 100%; padding: 9px 13px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); resize: none; }
+textarea:focus-visible { outline: 3px solid #f5b83d; outline-offset: 1px; }
+.hud:has(.notes) .log, .hud:has(.notes) .emotes { display: none; }
+.hud:has(.whisper-bar) .notes { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 98px); max-height: min(480px, calc(100dvh - 174px)); }
+
 .studio-top { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; pointer-events: none !important; }
 .studio-top button { pointer-events: auto; }
 .studio-top span, .hint { font-family: Jua; background: #17223fcc; color: #fff; padding: 8px 14px; border-radius: 12px; }
@@ -139,5 +180,25 @@ legend { font-size: 14px; padding: 0 0 6px; }
 @media (max-height: 480px) {
   .paints { grid-template-columns: repeat(6, 28px); }
   .palette { width: 270px; left: auto; padding: 8px; }
+}
+/* 귓속말 표시줄 한 줄만큼 위로 올리고, 쪽지 패널이 열리면 겹치는 것을 치운다 */
+.hud:has(.whisper-bar) .station { bottom: 128px; }
+@media (pointer: coarse) {
+  .hud:has(.whisper-bar) .joystick { bottom: 136px; }
+  .hud:not(.studio):has(.whisper-bar) .emotes { bottom: 100px; }
+  .hud:has(.notes) .joystick { display: none; }
+}
+@media (max-width: 760px) {
+  .notes { max-height: min(480px, calc(100dvh - 270px)); }
+  .hud:has(.whisper-bar) .notes { max-height: min(480px, calc(100dvh - 314px)); }
+  .hud:has(.whisper-bar) .station { bottom: 270px; }
+  .hud:has(.whisper-bar) .palette { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 96px); max-height: calc(100dvh - 172px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .hud:has(.notes) .palette, .hud:has(.notes) .station { display: none; }
+}
+@media (max-height: 480px) {
+  .notes { max-height: calc(100dvh - 130px); }
+  .hud:has(.whisper-bar) .notes { max-height: calc(100dvh - 174px); }
+  .hud:has(.notes) .invites, .hud:has(.notes) .station { left: auto; right: 12px; transform: none; }
+  .hud:has(.notes) .hint { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .emote { animation: none; } }

@@ -14,6 +14,10 @@ export const CHARACTERS_BY_GENDER: Record<Gender, readonly Character[]> = {
 export const EMOTES = ['wave', 'cheer', 'jump', 'sit', 'laugh', 'snow'] as const;
 export type Emote = (typeof EMOTES)[number];
 
+export const MAX_CHAT = 120;
+export const MAX_NOTE = 200;
+export const MAX_NOTES = 50;
+
 const num = z.number().finite();
 const vec3 = z.tuple([num, num, num]);
 const kind = z.enum(KINDS);
@@ -21,6 +25,7 @@ const color = z.number().int().min(0).max(COLORS.length - 1);
 const pts = z.array(num.min(-1).max(1)).min(2).max(MAX_CHUNK * 2);
 const index = (list: readonly unknown[]) => z.number().int().min(0).max(list.length - 1);
 const id = z.string().max(40);
+const ref = z.number().int().nonnegative();
 
 export const clientMessage = z.discriminatedUnion('t', [
   z.object({
@@ -30,7 +35,10 @@ export const clientMessage = z.discriminatedUnion('t', [
     color,
   }),
   z.object({ t: z.literal('move'), x: num, z: num, ry: num, moving: z.boolean() }),
-  z.object({ t: z.literal('chat'), text: z.string().trim().min(1).max(120), session: id.nullable() }),
+  z.object({ t: z.literal('chat'), text: z.string().trim().min(1).max(MAX_CHAT), session: id.nullable() }),
+  z.object({ t: z.literal('whisper'), ref, to: id, text: z.string().trim().min(1).max(MAX_CHAT) }),
+  z.object({ t: z.literal('note'), ref, to: id, text: z.string().trim().min(1).max(MAX_NOTE) }),
+  z.object({ t: z.literal('deleteNote'), id }),
   z.object({ t: z.literal('emote'), emote: z.enum(EMOTES) }),
   z.object({ t: z.literal('wait'), kind: kind.nullable() }),
   z.object({ t: z.literal('joinWaiting'), host: id }),
@@ -98,13 +106,26 @@ export interface Exhibit {
   strokes: Stroke[];
   names: string[];
 }
+/** name은 보낸 순간의 닉네임이다. 나간 사람의 닉네임을 다른 사람이 쓸 수 있다. */
+export interface StoredNote {
+  id: string;
+  from: string;
+  name: string;
+  text: string;
+  at: number;
+}
 
 export type ServerMessage =
+  | { t: 'joinRejected'; reason: 'taken' | 'invalid' }
   | { t: 'welcome'; id: string; players: PlayerState[]; exhibits: Exhibit[] }
   | { t: 'player'; player: PlayerState }
   | { t: 'gone'; id: string }
   | { t: 'moves'; moves: [string, number, number, number, boolean][] }
   | { t: 'chat'; from: string; text: string }
+  | { t: 'whisper'; from: string; text: string }
+  | { t: 'note'; note: StoredNote }
+  | { t: 'noteDeleted'; id: string }
+  | { t: 'sent'; ref: number; result: 'ok' | 'slow' | 'gone' }
   | { t: 'emote'; from: string; emote: Emote }
   | { t: 'invite'; from: string; kind: Kind }
   | { t: 'session'; session: SessionState }

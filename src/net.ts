@@ -1,6 +1,7 @@
 import { ITEMS } from '../shared/items';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
-import { addChat, addEmote, addInvite, editSession, editStrokes, resetStore, toast, useStore, without } from './store';
+import { clearPending, settle } from './private';
+import { addChat, addEmote, addInvite, addWhisper, editSession, editStrokes, resetStore, toast, useStore, without } from './store';
 
 const { getState: get, setState: set } = useStore;
 
@@ -10,12 +11,19 @@ export const positions = new Map<string, { x: number; z: number; ry: number; mov
 let ws: WebSocket | null = null;
 
 export function connect(profile: Omit<Extract<ClientMessage, { t: 'join' }>, 't'>) {
-  set({ status: 'connecting' });
+  set({ status: 'connecting', joinError: null });
+  // 닉네임만 거절된 연결은 살아 있으니 다시 쓴다.
+  if (ws?.readyState === WebSocket.OPEN) return send({ t: 'join', ...profile });
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws = socket;
   socket.onopen = () => send({ t: 'join', ...profile });
   socket.onmessage = (e) => receive(JSON.parse(e.data));
   socket.onclose = () => {
+    if (ws !== socket) return;
+    ws = null;
+    // 닉네임을 고치는 동안 끊기면 다음 시도에서 새로 잇는다.
+    if (get().status === 'lobby') return;
+    clearPending();
     positions.clear();
     resetStore();
     toast('마을과 연결이 끊겼어요. 다시 들어와 주세요.');
@@ -28,6 +36,8 @@ export function send(msg: ClientMessage) {
 
 function receive(msg: ServerMessage) {
   switch (msg.t) {
+    case 'joinRejected':
+      return set({ status: 'lobby', joinError: msg.reason });
     case 'welcome':
       for (const p of msg.players) positions.set(p.id, { ...p });
       return set({
@@ -51,6 +61,10 @@ function receive(msg: ServerMessage) {
         bubbles: without(s.bubbles, msg.id),
         emotes: without(s.emotes, msg.id),
         invites: s.invites.filter((i) => i.from !== msg.id),
+        // 보고 있던 글은 복사할 수 있게 남긴다.
+        ...(s.whisper?.id !== msg.id && { whisperDrafts: without(s.whisperDrafts, msg.id) }),
+        ...(s.noteTo?.id !== msg.id && { noteDrafts: without(s.noteDrafts, msg.id) }),
+        notes: s.muted[msg.id] ? s.notes.filter((n) => n.from !== msg.id) : s.notes,
       }));
     case 'moves':
       for (const [id, x, z, ry, moving] of msg.moves) {
@@ -59,23 +73,36 @@ function receive(msg: ServerMessage) {
       return;
     case 'chat':
       return addChat(msg.from, msg.text);
+    case 'whisper': {
+      const { players, muted, panel, gallery } = get();
+      const from = players[msg.from];
+      if (!from || muted[msg.from]) return;
+      if (panel || gallery) toast(`${from.name}님의 귓속말이 왔어요.`);
+      return addWhisper(from, msg.text, false);
+    }
+    case 'note':
+      return set((s) => ({ notes: [{ ...msg.note, read: false }, ...s.notes] }));
+    case 'noteDeleted':
+      return set((s) => ({ notes: s.notes.filter((n) => n.id !== msg.id) }));
+    case 'sent':
+      return settle(msg);
     case 'emote':
       return addEmote(msg.from, msg.emote);
     case 'invite':
       return addInvite({ from: msg.from, kind: msg.kind });
     case 'session':
-      return set({
+      return set((s) => ({
         session: msg.session,
         tab: msg.session.kind === 'cake' ? 'paint' : 'topping',
         item: ITEMS[msg.session.kind][0].id,
         removing: false,
         partnerCursor: null,
-        chat: [],
+        chat: s.chat.filter((l) => l.whisper),
         invites: [],
         near: null,
         gallery: null,
         text: '',
-      });
+      }));
     case 'sessionMeta': {
       const { t: _t, ...meta } = msg;
       return set((s) => ({
@@ -102,7 +129,7 @@ function receive(msg: ServerMessage) {
     case 'cursor':
       return set({ partnerCursor: msg.p });
     case 'sessionEnd':
-      set({ session: null, partnerCursor: null, chat: [] });
+      set((s) => ({ session: null, partnerCursor: null, chat: s.chat.filter((l) => l.whisper) }));
       if (msg.finished) toast('완성했어요! 광장 북쪽에 전시되었어요.');
       return;
     case 'exhibits':

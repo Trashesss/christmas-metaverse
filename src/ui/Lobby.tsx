@@ -1,6 +1,6 @@
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { COLORS } from '../../shared/items';
 import { CHARACTERS_BY_GENDER, GENDERS, type Character, type Gender } from '../../shared/protocol';
 import { connect } from '../net';
@@ -8,11 +8,20 @@ import { useStore } from '../store';
 import { AvatarModel } from '../three/Avatar';
 import { Snow } from '../three/Effects';
 
+const JOIN_ERROR = {
+  taken: '이미 쓰고 있는 닉네임이에요. 다른 닉네임을 적어주세요.',
+  invalid: '보이는 글자가 있는 닉네임을 적어주세요.',
+};
 const GENDER_LABEL: Record<Gender, string> = { male: '남', female: '여' };
 const LABEL: Record<Character, string> = { Barbarian: '숲지기', Knight: '문지기', Mage: '별지기', Rogue: '여행자' };
 
 export function Lobby() {
   const connecting = useStore((s) => s.status === 'connecting');
+  const joinError = useStore((s) => s.joinError);
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (joinError) nameInput.current?.focus();
+  }, [joinError]);
   const [name, setName] = useState('');
   const [gender, setGender] = useState<Gender>('female');
   const [picked, setPicked] = useState<Record<Gender, Character>>({ male: 'Knight', female: 'Mage' });
@@ -39,15 +48,28 @@ export function Lobby() {
         className="card"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim()) connect({ name: name.trim().slice(0, 12), character, color });
+          if (name.trim() && !connecting) connect({ name: name.trim().slice(0, 12), character, color });
         }}
       >
         <h1>눈 내리는 마을</h1>
         <p>산책하고, 이야기하고, 케이크와 트리를 같이 꾸며요.</p>
         <label>
           닉네임
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={12} placeholder="12자까지" autoComplete="off" />
+          <input
+            ref={nameInput}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              useStore.setState({ joinError: null });
+            }}
+            maxLength={12}
+            placeholder="12자까지"
+            autoComplete="off"
+            aria-invalid={!!joinError}
+            aria-describedby={joinError ? 'name-error' : undefined}
+          />
         </label>
+        {joinError && <p id="name-error" className="error" role="alert">{JOIN_ERROR[joinError]}</p>}
         <fieldset>
           <legend>남/여</legend>
           <div className="choices">
