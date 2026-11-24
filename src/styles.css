@@ -29,7 +29,7 @@ input { font: inherit; font-size: 16px; min-width: 0; padding: 9px 13px; border:
 summary { cursor: pointer; font-size: 15px; padding: 4px 0; }
 
 /* 월드 캔버스 위를 덮는다 */
-.lobby { position: fixed; inset: 0; z-index: 20; height: 100%; display: flex; align-items: center; justify-content: center; gap: 24px; padding: 20px; background: linear-gradient(#1b2a4a, #4a5f96); overflow: auto; }
+.lobby { position: fixed; inset: 0; z-index: 20; height: 100%; display: flex; align-items: safe center; justify-content: center; gap: 24px; padding: 20px; background: linear-gradient(#1b2a4a, #4a5f96); overflow: auto; }
 .lobby .preview { width: min(380px, 40vw); height: min(520px, 80vh); }
 .lobby .card { width: min(380px, 100%); padding: 26px; display: grid; gap: 14px; }
 .lobby h1 { font-size: 34px; margin: 0; }
@@ -37,7 +37,7 @@ summary { cursor: pointer; font-size: 15px; padding: 4px 0; }
 .lobby label { display: grid; gap: 6px; font-size: 14px; }
 fieldset { border: 0; margin: 0; padding: 0; }
 legend { font-size: 14px; padding: 0 0 6px; }
-.choices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.choices { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .choices button { padding: 8px 2px; }
 .swatches { display: flex; gap: 8px; }
 .swatches button { width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 50%; border: 2px solid #0002; }
