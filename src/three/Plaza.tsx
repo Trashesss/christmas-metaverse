@@ -6,11 +6,13 @@ import { CAKE_TOP, COLORS, KIND_EMOJI, KIND_LABEL, KINDS, TREE_CONES, type Kind 
 import { COLLIDERS, EXHIBIT_SLOTS, GALLERY, RUN_SPEED, SPEED, STATIONS, facing, nearestSpot, resolveMove } from '../../shared/world';
 import { readMove, stopInput } from '../input';
 import { positions, send } from '../net';
+import { aim, throwBall } from '../snow';
 import { useStore } from '../store';
 import { Avatar } from './Avatar';
 import { Bulbs, Glow, Snow } from './Effects';
 import { itemGeometry } from './itemGeometry';
 import { Model } from './Model';
+import { Arena, Snowballs } from './Snowballs';
 import { Ground, Village } from './Village';
 import { FinishedWork, WorkBase } from './Work';
 
@@ -27,6 +29,8 @@ export function Plaza() {
       ))}
       <Showcase />
       <Exhibits />
+      <Arena />
+      <Snowballs />
       {Object.values(players).map((p) => (
         <Avatar key={p.id} player={p} />
       ))}
@@ -240,8 +244,22 @@ function Controller() {
 
   useEffect(() => {
     const el = gl.domElement;
+    const ray = new THREE.Raycaster();
+    const chest = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.8);
+    /** 끌지 않고 톡 누르면 그 자리로 눈을 던진다. */
+    const tap = (e: PointerEvent) => {
+      const p = positions.get(useStore.getState().me);
+      const box = el.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - box.left) / box.width) * 2 - 1, 1 - ((e.clientY - box.top) / box.height) * 2), camera);
+      // 지평선 위를 누르면 바라보는 쪽으로 던진다.
+      const at = ray.ray.intersectPlane(chest, new THREE.Vector3());
+      if (p && at) throwBall(at.x - p.x, at.z - p.z);
+      else throwBall(ray.ray.direction.x, ray.ray.direction.z);
+    };
+    let start = { x: 0, y: 0, at: 0 };
     let drag: { id: number; x: number; y: number } | null = null;
     const down = (e: PointerEvent) => {
+      if (!drag) start = { x: e.clientX, y: e.clientY, at: e.timeStamp };
       drag ??= { id: e.pointerId, x: e.clientX, y: e.clientY };
     };
     const move = (e: PointerEvent) => {
@@ -251,7 +269,9 @@ function Controller() {
       drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
     };
     const up = (e: PointerEvent) => {
-      if (drag?.id === e.pointerId) drag = null;
+      if (drag?.id !== e.pointerId) return;
+      drag = null;
+      if (e.type === 'pointerup' && e.button === 0 && e.timeStamp - start.at < 300 && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 8) tap(e);
     };
     const wheel = (e: WheelEvent) => {
       view.current.dist = THREE.MathUtils.clamp(view.current.dist + e.deltaY * 0.01, 4, 15);
@@ -279,7 +299,7 @@ function Controller() {
       removeEventListener('pointercancel', up);
       el.removeEventListener('wheel', wheel);
     };
-  }, [gl]);
+  }, [gl, camera]);
 
   useFrame((_, rawDt) => {
     const { me, near, gallery, editing } = useStore.getState();
@@ -305,6 +325,9 @@ function Controller() {
       sent.current = { at: now, ...p };
       send({ t: 'move', x: p.x, z: p.z, ry: p.ry, moving: p.moving });
     }
+
+    aim.x = -Math.sin(yaw);
+    aim.z = -Math.cos(yaw);
 
     const found = nearestSpot(p.x, p.z, near);
     if (found !== near) useStore.setState({ near: found });

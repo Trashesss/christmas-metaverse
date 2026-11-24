@@ -7,6 +7,7 @@ import { KIND_EMOJI } from '../../shared/items';
 import type { Look } from '../../shared/look';
 import type { Emote, PlayerState } from '../../shared/protocol';
 import { positions } from '../net';
+import { bumps } from '../snow';
 import { useStore } from '../store';
 import { HEAD_SCALE, LIFT, baseUrl, bodyMaterial, buildBody, partUrls, setPalette, withNormal } from './avatarParts';
 import { drawFace } from './faceTexture';
@@ -139,11 +140,17 @@ export function Avatar({ player, pose }: { player: PlayerState; pose?: { x: numb
     }
     const turn = Math.atan2(Math.sin(p.ry - g.rotation.y), Math.cos(p.ry - g.rotation.y));
     g.rotation.y += turn * (1 - Math.exp(-12 * dt));
+    // 던질 때는 앞으로, 맞으면 뒤로 잠깐 기운다.
+    const bump = pose ? undefined : bumps.get(player.id);
+    const t = bump ? (performance.now() - bump.at) / (bump.hit ? 500 : 300) : 1;
+    const lean = t < 1 ? Math.sin(t * Math.PI) : 0;
+    g.rotation.x = lean * (bump?.hit ? -0.45 : 0.3);
+    g.scale.y = 1 - (bump?.hit ? lean * 0.15 : 0);
   });
 
   const act = !moving && emote ? EMOTE[emote.emote] : undefined;
   return (
-    <group ref={group}>
+    <group ref={group} rotation-order="YXZ">
       <AvatarModel look={player.look} clip={moving ? 'Run' : (act?.clip ?? 'Idle')} loop={!act?.clip || !!act.loop} />
       <Html center position={[0, 1.9, 0]} zIndexRange={[10, 0]} className="tag" pointerEvents="none">
         {emote && <div key={emote.key} className="emote">{EMOTE[emote.emote].emoji}</div>}

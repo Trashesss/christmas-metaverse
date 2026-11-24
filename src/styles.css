@@ -168,6 +168,21 @@ textarea:focus-visible { outline: 3px solid #f5b83d; outline-offset: 1px; }
 .gallery .empty { margin: auto; text-align: center; word-break: keep-all; }
 .invites { z-index: 3; }
 
+.scores { position: absolute; left: 12px; top: calc(max(12px, env(safe-area-inset-top)) + 56px); display: grid; gap: 3px; max-width: 190px; padding: 9px 13px; border-radius: 14px; background: #17223fcc; color: #fff; font-size: 14px; pointer-events: none !important; }
+.scores b { font-family: Jua; font-weight: 400; }
+.scores span { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.scores i { font-style: normal; }
+.scores .mine { color: #ffe0a3; }
+.scores small { opacity: 0.8; word-break: keep-all; }
+.throw { position: absolute; right: 22px; bottom: 158px; width: 72px; height: 72px; border-radius: 50%; padding: 0; font-size: 30px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.hud:has(.notes) .throw { display: none; }
+@media (pointer: fine) { .throw { bottom: 24px; } }
+@media (max-height: 480px) {
+  .scores { left: 130px; top: max(12px, env(safe-area-inset-top)); }
+  .scores small { display: none; }
+  .throw { bottom: 76px; }
+}
+
 .tag { pointer-events: none; text-align: center; display: grid; justify-items: center; gap: 3px; user-select: none; }
 .name { white-space: nowrap; font-size: 14px; color: #fff; background: #17223f99; padding: 2px 9px; border-radius: 9px; }
 .name.me { color: #ffe0a3; }

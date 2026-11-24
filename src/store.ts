@@ -49,6 +49,8 @@ interface State {
   near: Spot | null;
   /** 열려 있을 때만 케이크 목록이 들어 있다. */
   gallery: Exhibit[] | null;
+  /** 눈싸움장에 있는 사람과 맞힌 횟수 */
+  scores: Record<string, number>;
   /** 광장에서 모습을 고치는 중 */
   editing: boolean;
   tab: StudioTab;
@@ -87,6 +89,7 @@ const initial: State = {
   near: null,
   gallery: null,
   editing: false,
+  scores: {},
   tab: 'topping',
   tool: 'pen',
   paintColor: 1,

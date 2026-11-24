@@ -2,6 +2,7 @@ import { ITEMS } from '../shared/items';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
 import { loadLooks, sameLook, saveLooks, withLook } from './look';
 import { clearPending, settle } from './private';
+import { MAX_SPLATS, balls, bumps, splats } from './snow';
 import { addChat, addEmote, addInvite, addWhisper, editSession, editStrokes, resetStore, toast, useStore, without } from './store';
 
 const { getState: get, setState: set } = useStore;
@@ -26,6 +27,9 @@ export function connect(profile: Omit<Extract<ClientMessage, { t: 'join' }>, 't'
     if (get().status === 'lobby') return;
     clearPending();
     positions.clear();
+    balls.clear();
+    bumps.clear();
+    splats.length = 0;
     resetStore();
     toast('마을과 연결이 끊겼어요. 다시 들어와 주세요.');
   };
@@ -61,6 +65,7 @@ function receive(msg: ServerMessage) {
     }
     case 'gone':
       positions.delete(msg.id);
+      bumps.delete(msg.id);
       return set((s) => ({
         players: without(s.players, msg.id),
         muted: without(s.muted, msg.id),
@@ -92,6 +97,19 @@ function receive(msg: ServerMessage) {
       return set((s) => ({ notes: s.notes.filter((n) => n.id !== msg.id) }));
     case 'sent':
       return settle(msg);
+    case 'throw':
+      balls.set(msg.ball.id, { ...msg.ball, at: performance.now() });
+      bumps.set(msg.ball.from, { at: performance.now(), hit: false });
+      return;
+    case 'splat':
+      balls.delete(msg.id);
+      splats.push({ x: msg.x, y: msg.y, z: msg.z, at: performance.now() });
+      // 활동 중에는 그리지 않으므로 여기서도 쌓이지 않게 한다.
+      if (splats.length > MAX_SPLATS) splats.shift();
+      if (msg.hit) bumps.set(msg.hit, { at: performance.now(), hit: true });
+      return;
+    case 'scores':
+      return set({ scores: msg.scores });
     case 'emote':
       return addEmote(msg.from, msg.emote);
     case 'invite':
