@@ -21,6 +21,11 @@ npm run build && npm start   # 서버 하나로 실행, http://localhost:8787
 - 쪽지: 💌에 남아 나중에 읽습니다(200자, 50개까지). 계정이 없어 접속이 끝나면 사라지고, 접속 중인 사람에게만 보낼 수 있습니다.
 - 차단했거나 쪽지함이 가득 차 전해지지 않아도 보낸 사람에게는 똑같이 보냈다고 나옵니다.
 
+## 꾸미기
+
+- 입장 화면이나 광장의 '꾸미기'에서 피부색, 얼굴형, 머리, 눈, 입술, 옷, 모자를 고릅니다. 남/여마다 고른 모습을 이 브라우저에 기억합니다.
+- 남/여는 아바타 모양에만 쓰고 다른 사람에게 글자로 보이거나 짝을 찾는 데 쓰지 않습니다.
+
 ## 구조
 
 - `shared/` 서버와 화면이 같이 쓰는 규칙(장식 목록, 맵, 메시지 형식)
@@ -31,7 +36,7 @@ npm run build && npm start   # 서버 하나로 실행, http://localhost:8787
 
 ## 에셋
 
-`public/assets/`의 모델은 모두 [KayKit](https://github.com/KayKit-Game-Assets)(Kay Lousberg) CC0 에셋이며 폴더마다 `LICENSE.txt`가 있습니다.
+`public/assets/`의 건물과 소품은 [KayKit](https://github.com/KayKit-Game-Assets)(Kay Lousberg) CC0 에셋이며 폴더마다 `LICENSE.txt`가 있습니다.
 케이크 그림판 글꼴은 Jua와 Gaegu(SIL OFL)입니다.
-캐릭터 GLB는 쓰지 않는 무기, 모자, 애니메이션을 제거해 용량을 줄였습니다.
+아바타는 [Quaternius](https://quaternius.com) Ultimate Modular Men/Women(CC0)입니다. `node scripts/build-avatars.mjs <원본 GLB 폴더>`로 무기, 배낭, 안 쓰는 동작을 빼고 부품별 파일로 나눕니다. 손 흔들기, 환호, 점프, 앉기 동작은 이 스크립트가 만들고, 눈, 눈썹, 입술은 화면에서 그립니다.
 케이크, 트리, 장식, 산타 모자는 코드로 만든 도형입니다.

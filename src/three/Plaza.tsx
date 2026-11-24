@@ -282,12 +282,12 @@ function Controller() {
   }, [gl]);
 
   useFrame((_, rawDt) => {
-    const { me, near, gallery } = useStore.getState();
+    const { me, near, gallery, editing } = useStore.getState();
     const p = positions.get(me);
     if (!p) return;
     const dt = Math.min(rawDt, 0.1);
     const { yaw, pitch, dist } = view.current;
-    const input = gallery ? { x: 0, y: 0, run: false } : readMove();
+    const input = gallery || editing ? { x: 0, y: 0, run: false } : readMove();
     const speed = Math.hypot(input.x, input.y);
     p.moving = speed > 0.15;
     if (p.moving) {

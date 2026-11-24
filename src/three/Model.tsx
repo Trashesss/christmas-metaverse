@@ -1,7 +1,7 @@
-import { useGLTF } from '@react-three/drei';
 import type { ThreeElements } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { LoadBoundary, useModel } from './LoadBoundary';
 
 const FOLDER: Record<string, string> = {
   table_round_A: 'restaurant-bits',
@@ -36,7 +36,18 @@ function withSnow(source: THREE.Material) {
 }
 
 export function Model({ name, snow = false, ...props }: { name: string; snow?: boolean } & ThreeElements['group']) {
-  const { scene } = useGLTF(modelUrl(name));
+  const url = modelUrl(name);
+  return (
+    <group {...props}>
+      <LoadBoundary urls={[url]} fallback={null}>
+        <Loaded url={url} snow={snow} />
+      </LoadBoundary>
+    </group>
+  );
+}
+
+function Loaded({ url, snow }: { url: string; snow: boolean }) {
+  const { scene } = useModel(url);
   const object = useMemo(() => {
     const copy = scene.clone(true);
     copy.traverse((o) => {
@@ -46,11 +57,7 @@ export function Model({ name, snow = false, ...props }: { name: string; snow?: b
     });
     return copy;
   }, [scene, snow]);
-  return (
-    <group {...props}>
-      <primitive object={object} />
-    </group>
-  );
+  return <primitive object={object} />;
 }
 
 export interface Placement {
@@ -62,7 +69,16 @@ export interface Placement {
 
 /** 같은 모델을 여러 곳에 놓는다. 인스턴싱이라 모델의 메시 수만큼만 그린다. at은 바뀌지 않는 배열이어야 한다. 멀리서 보이는 것은 shadow를 꺼 그림자 패스를 아낀다. */
 export function Instances({ name, snow = false, shadow = true, at }: { name: string; snow?: boolean; shadow?: boolean; at: Placement[] }) {
-  const { scene } = useGLTF(modelUrl(name));
+  const url = modelUrl(name);
+  return (
+    <LoadBoundary urls={[url]} fallback={null}>
+      <LoadedInstances url={url} snow={snow} shadow={shadow} at={at} />
+    </LoadBoundary>
+  );
+}
+
+function LoadedInstances({ url, snow, shadow, at }: { url: string; snow: boolean; shadow: boolean; at: Placement[] }) {
+  const { scene } = useModel(url);
   const group = useMemo(() => {
     scene.updateMatrixWorld(true);
     const out = new THREE.Group();

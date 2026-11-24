@@ -1,69 +1,100 @@
 import { Html, useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { COLORS, KIND_EMOJI } from '../../shared/items';
-import { CHARACTERS, type Character, type Emote, type PlayerState } from '../../shared/protocol';
+import { KIND_EMOJI } from '../../shared/items';
+import type { Look } from '../../shared/look';
+import type { Emote, PlayerState } from '../../shared/protocol';
 import { positions } from '../net';
 import { useStore } from '../store';
+import { HEAD_SCALE, LIFT, baseUrl, bodyMaterial, buildBody, partUrls, setPalette, withNormal } from './avatarParts';
+import { drawFace } from './faceTexture';
+import { LoadBoundary, useModel } from './LoadBoundary';
 
-const url = (c: Character) => `/assets/character-pack-adventures/${c}.glb`;
-CHARACTERS.forEach((c) => useGLTF.preload(url(c)));
-
-const SCALE = 0.62;
+/** 몸을 낮추고 머리를 키워 아기자기한 비율로 만든다. 머리는 낮춘 만큼 세로를 되돌린다. */
+const BODY_SCALE = new THREE.Vector3(0.8, 0.64, 0.8);
+const HEAD_BOOST = new THREE.Vector3(1.3, 1.3 * (0.8 / 0.64), 1.3);
 const EMOTE: Record<Emote, { clip?: string; emoji: string; loop?: boolean }> = {
-  wave: { clip: 'Interact', emoji: '👋' },
+  wave: { clip: 'Wave', emoji: '👋' },
   cheer: { clip: 'Cheer', emoji: '🎉' },
-  jump: { clip: 'Jump_Full_Short', emoji: '✨' },
-  sit: { clip: 'Sit_Floor_Idle', emoji: '☕', loop: true },
+  jump: { clip: 'Jump', emoji: '✨' },
+  sit: { clip: 'Sit', emoji: '☕', loop: true },
   laugh: { emoji: '😂' },
   snow: { emoji: '❄️' },
 };
 
-// 모자 도형과 재질은 모든 아바타가 함께 쓴다.
-const HAT_PARTS = [
-  { geo: new THREE.TorusGeometry(0.5, 0.11, 8, 18).rotateX(Math.PI / 2), tint: false, pos: [0, 0, 0], rotZ: 0 },
-  { geo: new THREE.CylinderGeometry(0.28, 0.52, 0.42, 14), tint: true, pos: [0.02, 0.2, 0], rotZ: -0.1 },
-  { geo: new THREE.ConeGeometry(0.27, 0.5, 12), tint: true, pos: [0.16, 0.56, 0], rotZ: -0.5 },
-  { geo: new THREE.SphereGeometry(0.13, 10, 8), tint: false, pos: [0.3, 0.8, 0], rotZ: 0 },
-];
-const fur = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 });
-const felts = COLORS.map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 }));
-
-function santaHat(color: number) {
-  const hat = new THREE.Group();
-  for (const { geo, tint, pos, rotZ } of HAT_PARTS) {
-    const mesh = new THREE.Mesh(geo, tint ? felts[color] : fur);
-    mesh.position.fromArray(pos);
-    mesh.rotation.z = rotZ;
-    mesh.castShadow = true;
-    hat.add(mesh);
-  }
-  return hat;
+interface ModelProps {
+  look: Look;
+  clip: string;
+  loop?: boolean;
+  /** 얼굴 그림 한 변의 픽셀 수. 가까이서 보는 미리보기만 크게 한다. */
+  faceSize?: number;
 }
 
-export function AvatarModel({ character, color, clip, loop = true }: { character: Character; color: number; clip: string; loop?: boolean }) {
-  const { scene, animations } = useGLTF(url(character));
-  const object = useMemo(() => {
-    const copy = SkeletonUtils.clone(scene);
-    copy.traverse((o) => {
-      o.frustumCulled = false;
-      if (o instanceof THREE.Mesh) o.castShadow = true;
-    });
-    const hat = santaHat(color);
-    hat.position.y = 0.8;
-    copy.getObjectByName('head')?.add(hat);
-    return copy;
-  }, [scene, color]);
-  useEffect(
-    () => () =>
-      object.traverse((o) => {
-        if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose();
-      }),
-    [object],
+/** 새 부품을 받는 동안에는 이전 모습을 그대로 둔다. */
+export function AvatarModel({ look, ...props }: ModelProps) {
+  const shown = useDeferredValue(look);
+  return (
+    <LoadBoundary urls={[baseUrl(shown), ...partUrls(shown)]} fallback={<Placeholder />}>
+      <Rig key={shown.body} look={shown} {...props} />
+    </LoadBoundary>
   );
-  const { actions } = useAnimations(animations, useMemo(() => ({ current: object }), [object]));
+}
+
+function Rig({ look, clip, loop = true, faceSize = 256 }: ModelProps) {
+  const urls = partUrls(look);
+  urls.forEach((u) => useGLTF.preload(u));
+  const { scene, animations } = useModel(baseUrl(look));
+  // 배열로 한 번에 읽으면 조합마다 따로 저장되어 같은 파일을 다시 받는다. useGLTF는 React 상태를 쓰지 않아 개수가 달라져도 된다.
+  const parts = urls.map((u) => useModel(u));
+  const rig = useMemo(() => {
+    const object = SkeletonUtils.clone(scene);
+    object.getObjectByName('shin')?.removeFromParent();
+    const body = object.getObjectByName('head') as THREE.SkinnedMesh;
+    const face = object.getObjectByName('face') as THREE.SkinnedMesh;
+    face.bind(body.skeleton, body.bindMatrix);
+    const { material, palette } = bodyMaterial();
+    body.material = material;
+    body.frustumCulled = face.frustumCulled = false;
+    body.castShadow = true;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = faceSize;
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.flipY = false;
+    map.anisotropy = 4;
+    // 원본을 그리면 닫힌 캔버스가 도형에 묶여 남으므로 복사해서 쓴다.
+    face.geometry = withNormal(face.geometry.clone());
+    face.material = new THREE.MeshStandardMaterial({ map, roughness: 0.85, emissive: '#ffffff', emissiveMap: map, emissiveIntensity: LIFT });
+    const bone = object.getObjectByName('Head') as THREE.Bone;
+    return { object, body, face, bone, palette, canvas, map, materials: [material, face.material] };
+  }, [scene, faceSize]);
+  useEffect(
+    () => () => {
+      rig.body.skeleton.dispose();
+      rig.face.geometry.dispose();
+      rig.map.dispose();
+      rig.materials.forEach((m) => m.dispose());
+    },
+    [rig],
+  );
+
+  const { body, hair, top, bottom, shoes, hat } = look;
+  useLayoutEffect(() => {
+    const geometry = buildBody(look, scene, parts.map((p) => p.scene), rig.body.skeleton.bones.indexOf(rig.bone));
+    rig.body.geometry = geometry;
+    return () => geometry.dispose();
+    // 색만 바뀌면 도형을 다시 만들지 않는다.
+  }, [rig, scene, body, hair, top, bottom, shoes, hat]);
+  useLayoutEffect(() => {
+    setPalette(rig.palette, look);
+    rig.bone.scale.fromArray(HEAD_SCALE[look.face]).multiply(HEAD_BOOST);
+    drawFace(rig.canvas, look);
+    rig.map.needsUpdate = true;
+  }, [rig, look]);
+
+  const { actions } = useAnimations(animations, useMemo(() => ({ current: rig.object }), [rig]));
   useEffect(() => {
     const action = actions[clip];
     if (!action) return;
@@ -72,7 +103,17 @@ export function AvatarModel({ character, color, clip, loop = true }: { character
     action.fadeIn(0.2).play();
     return () => void action.fadeOut(0.2);
   }, [actions, clip, loop]);
-  return <primitive object={object} scale={SCALE} />;
+  return <primitive object={rig.object} scale={BODY_SCALE} />;
+}
+
+/** 모습을 받는 동안 서 있는 자리를 보여준다. */
+function Placeholder() {
+  return (
+    <mesh position-y={0.75} raycast={() => null}>
+      <capsuleGeometry args={[0.22, 0.9, 4, 10]} />
+      <meshStandardMaterial color="#c9d8ea" transparent opacity={0.6} />
+    </mesh>
+  );
 }
 
 const damp = THREE.MathUtils.damp;
@@ -103,14 +144,8 @@ export function Avatar({ player, pose }: { player: PlayerState; pose?: { x: numb
   const act = !moving && emote ? EMOTE[emote.emote] : undefined;
   return (
     <group ref={group}>
-      <AvatarModel
-        key={player.character}
-        character={player.character}
-        color={player.color}
-        clip={moving ? 'Running_A' : (act?.clip ?? 'Idle')}
-        loop={!act?.clip || !!act.loop}
-      />
-      <Html center position={[0, 2.05, 0]} zIndexRange={[10, 0]} className="tag" pointerEvents="none">
+      <AvatarModel look={player.look} clip={moving ? 'Run' : (act?.clip ?? 'Idle')} loop={!act?.clip || !!act.loop} />
+      <Html center position={[0, 1.9, 0]} zIndexRange={[10, 0]} className="tag" pointerEvents="none">
         {emote && <div key={emote.key} className="emote">{EMOTE[emote.emote].emoji}</div>}
         {bubble && !muted && <div className="bubble">{bubble.text}</div>}
         <div className={isMe ? 'name me' : 'name'}>

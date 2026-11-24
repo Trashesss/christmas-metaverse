@@ -1,19 +1,14 @@
-import { OrbitControls } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../../shared/items';
-import { CHARACTERS_BY_GENDER, GENDERS, type Character, type Gender } from '../../shared/protocol';
+import { loadLooks, saveLooks } from '../look';
 import { connect } from '../net';
 import { useStore } from '../store';
-import { AvatarModel } from '../three/Avatar';
-import { Snow } from '../three/Effects';
+import { LookControls, LookPreview, useLooks, type LookTab } from './LookEditor';
 
 const JOIN_ERROR = {
   taken: '이미 쓰고 있는 닉네임이에요. 다른 닉네임을 적어주세요.',
   invalid: '보이는 글자가 있는 닉네임을 적어주세요.',
 };
-const GENDER_LABEL: Record<Gender, string> = { male: '남', female: '여' };
-const LABEL: Record<Character, string> = { Barbarian: '숲지기', Knight: '문지기', Mage: '별지기', Rogue: '여행자' };
 
 export function Lobby() {
   const connecting = useStore((s) => s.status === 'connecting');
@@ -23,80 +18,46 @@ export function Lobby() {
     if (joinError) nameInput.current?.focus();
   }, [joinError]);
   const [name, setName] = useState('');
-  const [gender, setGender] = useState<Gender>('female');
-  const [picked, setPicked] = useState<Record<Gender, Character>>({ male: 'Knight', female: 'Mage' });
-  const character = picked[gender];
-  const [color, setColor] = useState(0);
+  const [tab, setTab] = useState<LookTab>('face');
+  const { state, look, setLook, setBody } = useLooks(loadLooks);
+  useEffect(() => saveLooks(state), [state]);
   return (
-    <main className="lobby">
-      <div className="preview">
-        <Canvas shadows="percentage" camera={{ position: [0, 1.5, 4], fov: 40 }}>
-          <hemisphereLight args={['#c9d8ff', '#6b5a68', 2]} />
-          <directionalLight position={[3, 5, 4]} intensity={2} color="#ffe6c4" castShadow />
-          <Suspense fallback={null}>
-            <AvatarModel key={`${character}:${color}`} character={character} color={color} clip="Idle" />
-          </Suspense>
-          <mesh rotation-x={-Math.PI / 2} receiveShadow>
-            <circleGeometry args={[1.3, 40]} />
-            <meshStandardMaterial color="#e6eefb" />
-          </mesh>
-          <Snow count={120} area={7} height={5} />
-          <OrbitControls target={[0, 0.95, 0]} enableZoom={false} enablePan={false} minPolarAngle={1.3} maxPolarAngle={1.5} />
-        </Canvas>
-      </div>
+    <main className="dressing">
+      <LookPreview look={look} tab={tab} />
       <form
         className="card"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim() && !connecting) connect({ name: name.trim().slice(0, 12), character, color });
+          if (name.trim() && !connecting) connect({ name: name.trim().slice(0, 12), look });
         }}
       >
-        <h1>눈 내리는 마을</h1>
-        <p>산책하고, 이야기하고, 케이크와 트리를 같이 꾸며요.</p>
-        <label>
-          닉네임
-          <input
-            ref={nameInput}
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              useStore.setState({ joinError: null });
-            }}
-            maxLength={12}
-            placeholder="12자까지"
-            autoComplete="off"
-            aria-invalid={!!joinError}
-            aria-describedby={joinError ? 'name-error' : undefined}
-          />
-        </label>
-        {joinError && <p id="name-error" className="error" role="alert">{JOIN_ERROR[joinError]}</p>}
-        <fieldset>
-          <legend>남/여</legend>
-          <div className="choices">
-            {GENDERS.map((g) => (
-              <button type="button" key={g} aria-pressed={g === gender} onClick={() => setGender(g)}>
-                {GENDER_LABEL[g]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>캐릭터</legend>
-          <div className="choices">
-            {CHARACTERS_BY_GENDER[gender].map((c) => (
-              <button type="button" key={c} aria-pressed={c === character} onClick={() => setPicked({ ...picked, [gender]: c })}>
-                {LABEL[c]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>모자 색</legend>
-          <Swatches value={color} onChange={setColor} />
-        </fieldset>
-        <button className="primary" disabled={!name.trim() || connecting}>
-          {connecting ? '들어가는 중…' : '마을로 들어가기'}
-        </button>
+        <header>
+          <h1>눈 내리는 마을</h1>
+          <p>산책하고, 이야기하고, 케이크와 트리를 같이 꾸며요.</p>
+        </header>
+        <LookControls look={look} setLook={setLook} setBody={setBody} tab={tab} setTab={setTab} />
+        <footer>
+          {joinError && <p id="name-error" className="error" role="alert">{JOIN_ERROR[joinError]}</p>}
+          <label>
+            <span>닉네임</span>
+            <input
+              ref={nameInput}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                useStore.setState({ joinError: null });
+              }}
+              maxLength={12}
+              placeholder="닉네임 12자까지"
+              autoComplete="off"
+              aria-invalid={!!joinError}
+              aria-describedby={joinError ? 'name-error' : undefined}
+            />
+          </label>
+          <button className="primary" disabled={!name.trim() || connecting}>
+            {connecting ? '들어가는 중…' : '마을로 들어가기'}
+          </button>
+        </footer>
       </form>
     </main>
   );
