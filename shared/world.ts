@@ -3,6 +3,8 @@ import { KINDS, type Kind } from './items';
 export const PLAZA_RADIUS = 30;
 export const STATION_RANGE = 4;
 export const GALLERY_RANGE = 5;
+/** 눈싸움장. 이 안에 있는 사람끼리만 눈을 던지고 맞는다. */
+export const ARENA = { x: 15.5, z: 15.5, r: 7 };
 export const CHAT_RANGE = 12;
 /** 전시대는 종류마다 이만큼씩 따로 둔다. */
 export const MAX_EXHIBITS = 6;
@@ -94,6 +96,7 @@ export const PADS: Pad[] = [
   { x: 0, z: -20, r: 5 },
   { x: -10, z: -13, r: 4, ice: true },
   { x: 10, z: -13, r: 4 },
+  { x: ARENA.x, z: ARENA.z, r: ARENA.r },
 ];
 export const PATH_WIDTH = 3.2;
 export const PATHS: [number, number][][] = [
@@ -105,7 +108,7 @@ export const PATHS: [number, number][][] = [
   [[0, -8], [0, -20]],
   [[0, -13.5], [-10, -13]],
   [[0, -13.5], [10, -13]],
-  [[6, 6], [14, 14]],
+  [[6, 6], [12, 12]],
   [[-6, 6], [-14, 14]],
 ];
 
@@ -137,8 +140,6 @@ export const BUILDING_HEIGHT: Record<string, number> = {
 };
 const b = (model: string, deg: number, r: number, scale = 4.5): Building => ({ model, ...polar(deg, r), scale });
 export const BUILDINGS: Building[] = [
-  b('building_home_A_red', 35, 25),
-  b('building_market_yellow', 55, 23, 3.4),
   b('building_home_B_green', 72, 26),
   b('building_home_A_yellow', 108, 26),
   b('building_home_B_blue', 125, 23),
@@ -179,7 +180,6 @@ export const LAMPS: Point[] = [
   { x: -7, z: -9.5 },
   { x: 7, z: -9.5 },
   { x: -12.5, z: 10.5 },
-  { x: 12.5, z: 10.5 },
 ];
 
 export const BENCHES: Point[] = [
@@ -233,6 +233,16 @@ export function buildingColliders(bd: Building, group: number): Collider[] {
   });
 }
 
+// 눈 요새: 눈덩이가 가장 높이 뜰 때(약 1.53)보다 높아 뒤에 숨으면 맞지 않는다. 카메라는 막지 않는다.
+export const FORT_HEIGHT = 1.55;
+export const FORTS: (Point & { ry: number })[] = [0, 1, 2, 3, 4].map((i) => {
+  const a = rad(i * 72 + 45);
+  return { x: ARENA.x + Math.cos(a) * 4, z: ARENA.z + Math.sin(a) * 4, ry: Math.PI / 2 - a };
+});
+export const FORTS_COLLIDERS: Collider[] = FORTS.flatMap((f, i) =>
+  [-0.85, 0, 0.85].map((lx) => ({ ...local(f, f.ry, lx, 0), r: 0.5, group: 200 + i })),
+);
+
 const galleryColliders = (): Collider[] => {
   const ry = facing(GALLERY);
   return [
@@ -246,6 +256,7 @@ const FIXED: Collider[] = [
   { ...STATIONS.cake, r: 1.7 },
   { ...STATIONS.tree, r: 1.5 },
   ...galleryColliders(),
+  ...FORTS_COLLIDERS,
   ...BENCHES.map((p) => ({ ...p, r: 0.8 })),
   ...LAMPS.map((p) => ({ ...p, r: 0.3 })),
   ...SNOWMEN.map((p) => ({ x: p.x, z: p.z, r: 0.32 * p.s })),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_GALLERY, MAX_POINTS, MAX_STROKES, MAX_STROKE_POINTS, type Stroke } from '../shared/paint';
 import { BASES, MAX_DECOS, TREE_TOP, findItem, type Kind } from '../shared/items';
+import { SAFE_MS, THROW_GAP, ballAt, inArena, stopped, touches, type Ball } from '../shared/snowball';
 import { nameKey } from '../shared/names';
 import { MAX_NOTES } from '../shared/protocol';
 import type {
@@ -21,6 +22,9 @@ const NOTE_GAP = 3000;
 const GALLERY_GAP = 500;
 const EMOTE_GAP = 400;
 const LOOK_GAP = 1000;
+/** 화면과 서버의 시각 차이로 제때 던진 눈이 사라지지 않게 봐준다. */
+const THROW_SLACK = 100;
+const BALL_STEP = 0.02;
 
 interface Player extends PlayerState {
   session: Session | null;
@@ -30,6 +34,10 @@ interface Player extends PlayerState {
   lastNote: number;
   lastEmote: number;
   lastLook: number;
+  lastThrow: number;
+  /** 눈싸움장 안에서 맞힌 횟수. 밖이면 null */
+  score: number | null;
+  safeUntil: number;
   lastGallery: number;
 }
 interface Session extends SessionState {
@@ -44,6 +52,7 @@ export class World {
   private dirty = new Set<string>();
   private exhibits: Exhibit[] = [];
   private gallery: Exhibit[] = [];
+  private balls: { ball: Ball; thrownAt: number; t: number }[] = [];
   /** 종류마다 가장 오래된 자리부터 돌려 쓴다. */
   private nextSlot: Record<Kind, number> = { cake: 0, tree: 0 };
 
@@ -73,6 +82,8 @@ export class World {
         return this.send(me.id, { t: 'noteDeleted', id: msg.id });
       case 'emote':
         return this.emote(me, msg);
+      case 'throw':
+        return this.throwBall(me, msg);
       case 'wait':
         return this.wait(me, msg.kind);
       case 'joinWaiting':
@@ -120,6 +131,7 @@ export class World {
     if (!me) return;
     this.leaveSession(me);
     this.players.delete(id);
+    if (me.score !== null) this.syncScores();
     this.dirty.delete(id);
     for (const key of this.invites.keys()) if (key.split('>').includes(id)) this.invites.delete(key);
     for (const p of this.players.values()) {
@@ -127,6 +139,67 @@ export class World {
       if (p.muted.delete(id)) p.notes = p.notes.filter((n) => n.from !== id);
     }
     this.broadcast({ t: 'gone', id });
+  }
+
+  /** 날아가는 눈덩이를 지금 시각까지 잘게 나눠 움직이며 맞았는지 본다. */
+  stepBalls() {
+    const now = this.now();
+    this.balls = this.balls.filter((b) => {
+      const until = (now - b.thrownAt) / 1000;
+      while (b.t + BALL_STEP <= until) {
+        b.t += BALL_STEP;
+        const p = ballAt(b.ball, b.t);
+        const hit = this.hitBy(b.ball, p);
+        if (!hit && !stopped(p)) continue;
+        // 차단한 사람의 눈은 맞은 티가 나되, 차단한 본인 화면에서는 아무 일도 없다.
+        this.sendBall(b.ball.from, { t: 'splat', id: b.ball.id, ...p, hit: hit?.id ?? null });
+        if (hit) this.score(b.ball.from, hit);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private hitBy(ball: Ball, at: { x: number; y: number; z: number }) {
+    return [...this.players.values()].find(
+      (p) => p.id !== ball.from && p.score !== null && this.now() >= p.safeUntil && touches(at, p),
+    );
+  }
+
+  private sendBall(from: string, msg: ServerMessage) {
+    for (const p of this.players.values()) if (!p.muted.has(from)) this.send(p.id, msg);
+  }
+
+  private score(from: string, hit: Player) {
+    hit.safeUntil = this.now() + SAFE_MS;
+    const thrower = this.players.get(from);
+    if (!thrower || thrower.score === null) return;
+    thrower.score++;
+    this.syncScores();
+  }
+
+  private throwBall(me: Player, msg: Msg<'throw'>) {
+    const now = this.now();
+    const len = Math.hypot(msg.dx, msg.dz);
+    if (me.score === null || len < 0.5 || now - me.lastThrow < THROW_GAP - THROW_SLACK) return;
+    me.lastThrow = now;
+    const ball: Ball = { id: randomUUID(), from: me.id, x: me.x, z: me.z, dx: msg.dx / len, dz: msg.dz / len };
+    this.balls.push({ ball, thrownAt: now, t: 0 });
+    this.sendBall(me.id, { t: 'throw', ball });
+  }
+
+  /** 경계에서 드나듦이 되풀이되지 않게 나갈 때는 조금 더 벗어나야 한다. */
+  private checkArena(me: Player) {
+    const inside = !me.session && inArena(me.x, me.z, me.score === null ? 0 : 0.5);
+    if (inside === (me.score !== null)) return;
+    me.score = inside ? 0 : null;
+    if (inside) me.safeUntil = this.now() + SAFE_MS;
+    this.syncScores();
+  }
+
+  private syncScores() {
+    const scores = Object.fromEntries([...this.players.values()].flatMap((p) => (p.score === null ? [] : [[p.id, p.score]])));
+    this.broadcast({ t: 'scores', scores });
   }
 
   /** 일정 주기로 호출해 이동한 사람의 위치만 묶어 보낸다. */
@@ -163,6 +236,9 @@ export class World {
       lastNote: 0,
       lastEmote: 0,
       lastLook: 0,
+      lastThrow: 0,
+      score: null,
+      safeUntil: 0,
       lastGallery: 0,
     };
     this.players.set(id, player);
@@ -173,6 +249,7 @@ export class World {
       exhibits: this.exhibits,
     });
     this.publish(player);
+    this.syncScores();
   }
 
   private look(me: Player, { look }: Msg<'look'>) {
@@ -188,6 +265,7 @@ export class World {
     if (me.session) return;
     Object.assign(me, clampToPlaza(msg.x, msg.z), { ry: msg.ry, moving: msg.moving });
     this.dirty.add(me.id);
+    this.checkArena(me);
   }
 
   private chat(me: Player, { text, session }: Msg<'chat'>) {
@@ -310,6 +388,7 @@ export class World {
     [a, b].forEach((p, i) => {
       Object.assign(p, spots[i], { ry: i ? -Math.PI / 2 : Math.PI / 2 });
       Object.assign(p, { session, activity: kind, waiting: null, moving: false });
+      this.checkArena(p);
       this.publish(p);
     });
     const { names: _names, ...state } = session;

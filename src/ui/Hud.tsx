@@ -8,6 +8,7 @@ import { Gallery } from './Gallery';
 import { LookDialog } from './LookEditor';
 import { NotesPanel } from './Notes';
 import { People } from './People';
+import { Snowfight } from './Snowfight';
 import { StudioPanel } from './StudioPanel';
 
 export function Hud() {
@@ -28,6 +29,7 @@ export function Hud() {
 }
 
 function PlazaHud({ editing }: { editing: boolean }) {
+  const arena = useStore((s) => s.scores[s.me] !== undefined);
   const near = useStore((s) => s.near);
   const invites = useStore((s) => s.invites);
   const players = useStore((s) => s.players);
@@ -45,6 +47,7 @@ function PlazaHud({ editing }: { editing: boolean }) {
         ) : (
           near && (near === 'gallery' ? <GalleryCard /> : <StationCard kind={near} />)
         )}
+        {arena && <Snowfight />}
         <Joystick />
       </div>
       <div className="invites">

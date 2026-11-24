@@ -77,6 +77,7 @@ wss.on('connection', (ws) => {
 });
 
 setInterval(() => world.flush(), 1000 / 15);
+setInterval(() => world.stepBalls(), 1000 / 30);
 setInterval(() => {
   for (const ws of wss.clients) {
     if (!alive.has(ws)) {

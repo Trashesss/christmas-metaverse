@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Ball } from './snowball';
 import { FONTS, MAX_CHUNK, MAX_TEXT, PAINT_COLORS, SIZES, TOOL_IDS, type Stroke } from './paint';
 import { COLORS, KINDS, type Kind } from './items';
 import { lookSchema, type Look } from './look';
@@ -32,6 +33,7 @@ export const clientMessage = z.discriminatedUnion('t', [
   z.object({ t: z.literal('note'), ref, to: id, text: z.string().trim().min(1).max(MAX_NOTE) }),
   z.object({ t: z.literal('deleteNote'), id }),
   z.object({ t: z.literal('emote'), emote: z.enum(EMOTES) }),
+  z.object({ t: z.literal('throw'), dx: num.min(-1).max(1), dz: num.min(-1).max(1) }),
   z.object({ t: z.literal('wait'), kind: kind.nullable() }),
   z.object({ t: z.literal('joinWaiting'), host: id }),
   z.object({ t: z.literal('invite'), to: id, kind }),
@@ -118,6 +120,9 @@ export type ServerMessage =
   | { t: 'note'; note: StoredNote }
   | { t: 'noteDeleted'; id: string }
   | { t: 'sent'; ref: number; result: 'ok' | 'slow' | 'gone' }
+  | { t: 'throw'; ball: Ball }
+  | { t: 'splat'; id: string; x: number; y: number; z: number; hit: string | null }
+  | { t: 'scores'; scores: Record<string, number> }
   | { t: 'emote'; from: string; emote: Emote }
   | { t: 'invite'; from: string; kind: Kind }
   | { t: 'session'; session: SessionState }
