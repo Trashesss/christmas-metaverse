@@ -4,6 +4,13 @@ import { COLORS, KINDS, type Kind } from './items';
 
 export const CHARACTERS = ['Barbarian', 'Knight', 'Mage', 'Rogue'] as const;
 export type Character = (typeof CHARACTERS)[number];
+// 로비에서 아바타 외형을 고르는 용도로만 쓴다. 서버로 보내거나 다른 사람에게 보이지 않는다.
+export const GENDERS = ['male', 'female'] as const;
+export type Gender = (typeof GENDERS)[number];
+export const CHARACTERS_BY_GENDER: Record<Gender, readonly Character[]> = {
+  male: ['Barbarian', 'Knight'],
+  female: ['Mage', 'Rogue'],
+};
 export const EMOTES = ['wave', 'cheer', 'jump', 'sit', 'laugh', 'snow'] as const;
 export type Emote = (typeof EMOTES)[number];
 
