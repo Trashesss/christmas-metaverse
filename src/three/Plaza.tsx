@@ -12,7 +12,7 @@ import { Avatar } from './Avatar';
 import { Bulbs, Glow, Snow } from './Effects';
 import { itemGeometry } from './itemGeometry';
 import { Model } from './Model';
-import { Arena, Snowballs } from './Snowballs';
+import { Snowballs } from './Snowballs';
 import { Ground, Village } from './Village';
 import { FinishedWork, WorkBase } from './Work';
 
@@ -29,7 +29,6 @@ export function Plaza() {
       ))}
       <Showcase />
       <Exhibits />
-      <Arena />
       <Snowballs />
       {Object.values(players).map((p) => (
         <Avatar key={p.id} player={p} />

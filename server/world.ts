@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_GALLERY, MAX_POINTS, MAX_STROKES, MAX_STROKE_POINTS, type Stroke } from '../shared/paint';
 import { BASES, MAX_DECOS, TREE_TOP, findItem, type Kind } from '../shared/items';
-import { SAFE_MS, THROW_GAP, ballAt, inArena, stopped, touches, type Ball } from '../shared/snowball';
+import { SAFE_MS, THROW_GAP, ballAt, stopped, touches, type Ball } from '../shared/snowball';
 import { nameKey } from '../shared/names';
 import { MAX_NOTES } from '../shared/protocol';
 import type {
@@ -35,7 +35,7 @@ interface Player extends PlayerState {
   lastEmote: number;
   lastLook: number;
   lastThrow: number;
-  /** 눈싸움장 안에서 맞힌 횟수. 밖이면 null */
+  /** 눈싸움에서 맞힌 횟수. 2인 활동 중이면 null */
   score: number | null;
   safeUntil: number;
   lastGallery: number;
@@ -149,8 +149,8 @@ export class World {
       while (b.t + BALL_STEP <= until) {
         b.t += BALL_STEP;
         const p = ballAt(b.ball, b.t);
-        const hit = this.hitBy(b.ball, p);
-        if (!hit && !stopped(p)) continue;
+        const { stop, hit } = this.hitBy(b.ball, p);
+        if (!stop && !stopped(p)) continue;
         // 차단한 사람의 눈은 맞은 티가 나되, 차단한 본인 화면에서는 아무 일도 없다.
         this.sendBall(b.ball.from, { t: 'splat', id: b.ball.id, ...p, hit: hit?.id ?? null });
         if (hit) this.score(b.ball.from, hit);
@@ -160,10 +160,11 @@ export class World {
     });
   }
 
+  /** 활동 중인 사람에게 닿은 눈은 점수 없이 부서진다. hit은 점수를 얻는 맞힘일 때만 준다. */
   private hitBy(ball: Ball, at: { x: number; y: number; z: number }) {
-    return [...this.players.values()].find(
-      (p) => p.id !== ball.from && p.score !== null && this.now() >= p.safeUntil && touches(at, p),
-    );
+    const p = [...this.players.values()].find((q) => q.id !== ball.from && touches(at, q));
+    if (!p) return { stop: false };
+    return { stop: true, hit: p.score !== null && this.now() >= p.safeUntil ? p : undefined };
   }
 
   private sendBall(from: string, msg: ServerMessage) {
@@ -188,12 +189,11 @@ export class World {
     this.sendBall(me.id, { t: 'throw', ball });
   }
 
-  /** 경계에서 드나듦이 되풀이되지 않게 나갈 때는 조금 더 벗어나야 한다. */
-  private checkArena(me: Player) {
-    const inside = !me.session && inArena(me.x, me.z, me.score === null ? 0 : 0.5);
-    if (inside === (me.score !== null)) return;
-    me.score = inside ? 0 : null;
-    if (inside) me.safeUntil = this.now() + SAFE_MS;
+/** 광장에 있는 사람은 모두 눈싸움에 끼고, 2인 활동 중에는 빠진다. */
+  private setPlaying(me: Player, on: boolean) {
+    if (on === (me.score !== null)) return;
+    me.score = on ? 0 : null;
+    if (on) me.safeUntil = this.now() + SAFE_MS;
     this.syncScores();
   }
 
@@ -249,7 +249,7 @@ export class World {
       exhibits: this.exhibits,
     });
     this.publish(player);
-    this.syncScores();
+    this.setPlaying(player, true);
   }
 
   private look(me: Player, { look }: Msg<'look'>) {
@@ -265,7 +265,6 @@ export class World {
     if (me.session) return;
     Object.assign(me, clampToPlaza(msg.x, msg.z), { ry: msg.ry, moving: msg.moving });
     this.dirty.add(me.id);
-    this.checkArena(me);
   }
 
   private chat(me: Player, { text, session }: Msg<'chat'>) {
@@ -388,7 +387,7 @@ export class World {
     [a, b].forEach((p, i) => {
       Object.assign(p, spots[i], { ry: i ? -Math.PI / 2 : Math.PI / 2 });
       Object.assign(p, { session, activity: kind, waiting: null, moving: false });
-      this.checkArena(p);
+      this.setPlaying(p, false);
       this.publish(p);
     });
     const { names: _names, ...state } = session;
@@ -502,6 +501,7 @@ export class World {
     p.session = null;
     p.activity = null;
     this.send(p.id, { t: 'sessionEnd', finished });
+    this.setPlaying(p, true);
     this.publish(p);
   }
 
