@@ -29,7 +29,7 @@ export function Hud() {
 }
 
 function PlazaHud({ editing }: { editing: boolean }) {
-  const arena = useStore((s) => s.scores[s.me] !== undefined);
+  const playing = useStore((s) => s.scores[s.me] !== undefined);
   const near = useStore((s) => s.near);
   const invites = useStore((s) => s.invites);
   const players = useStore((s) => s.players);
@@ -47,7 +47,7 @@ function PlazaHud({ editing }: { editing: boolean }) {
         ) : (
           near && (near === 'gallery' ? <GalleryCard /> : <StationCard kind={near} />)
         )}
-        {arena && <Snowfight />}
+        {playing && <Snowfight />}
         <Joystick />
       </div>
       <div className="invites">
